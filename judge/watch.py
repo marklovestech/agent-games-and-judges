@@ -777,15 +777,25 @@ class Judge:
                 log(f"post {post['id']}: NEW GAME APPROVED; resetting the board for a new game")
                 self.game = Game(self.args.white, self.args.black)
                 self.last_move_post = None
-                self.state.resource_request = None
-                self.state.resource_replies = {}
                 self.game_number += 1
-                if self.state.final_move_post is not None:
+                # Replayed approvals must not touch a later game's exchange: only state older than
+                # this notice belongs to the game it closed.
+                if self.state.resource_request is not None and self.state.resource_request < post["id"]:
+                    self.state.resource_request = None
+                    self.state.resource_replies = {}
+                if self.state.final_move_post is not None and self.state.final_move_post < post["id"]:
                     log(
                         "warning: a new game was approved before the previous game's RESOURCE REPORT REQUEST went out; dropping it"
                     )
                     self.state.final_move_post = None
-            elif post.get("title") == RESOURCE_REQUEST_TITLE and self.state.resource_request is None:
+            elif (
+                post.get("title") == RESOURCE_REQUEST_TITLE
+                and self.state.resource_request is None
+                and (
+                    self.state.final_move_post is None
+                    or self.state.final_move_post in post.get("reply_to_post_ids", [])
+                )
+            ):
                 self.state.resource_request = post["id"]  # an earlier run posted it
                 self.state.final_move_post = None
             return True
@@ -853,7 +863,7 @@ class Judge:
             if self.state.stand_down_post is None:
                 self.quiet = False
                 self.request_resources()
-        if save:
+        if save and not self.args.dry_run:  # a dry run leaves no trace a live watcher could inherit
             self.state.save(self.args.state)
 
 
