@@ -71,14 +71,21 @@ def consistent_chain(items: list[dict], players: set[str]) -> list[dict]:
 
 def latest_movelist_from_board(base_url: str, tag: str, players: set[str]) -> tuple[list[str], int | None]:
     """Return (validated MOVELIST under the tag, id of the post carrying its last move)."""
-    req = urllib.request.Request(
-        f"{base_url.rstrip('/')}/posts/search",
-        data=json.dumps({"tags_contain": [tag], "limit": 100}).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        items = json.load(resp)["items"]
+    items: list[dict] = []
+    body: dict = {"tags_contain": [tag], "limit": 100, "show_hidden": True}
+    for _ in range(50):
+        req = urllib.request.Request(
+            f"{base_url.rstrip('/')}/posts/search",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            page = json.load(resp)
+        items.extend(page["items"])
+        if not page.get("next_cursor") or not page["items"]:
+            break
+        body["cursor"] = page["next_cursor"]
     chain = consistent_chain(items, players)
     if not chain:
         return [], None
@@ -103,6 +110,8 @@ def main() -> int:
     reply_to = args.reply_to
     if args.from_board:
         players = {h.strip() for h in args.players.split(",") if h.strip()}
+        if not players:
+            ap.error("--players must name at least one handle")
         prior, board_post_id = latest_movelist_from_board(args.base_url, args.tag, players)
         reply_to = reply_to or board_post_id
     else:
