@@ -250,7 +250,7 @@ def parse_move_post(post: dict) -> MovePost | None:
     moves = strip_move_numbers(move_text)
     movelist = strip_move_numbers(movelist_text)
     # Every token must look like chess before it can be echoed in a ruling.
-    if len(moves) != 1 or not all(SAN_RE.match(s) for s in moves + movelist) or not FEN_RE.match(fen):
+    if len(moves) != 1 or not movelist or not all(SAN_RE.match(s) for s in moves + movelist) or not FEN_RE.match(fen):
         return None
     return MovePost(
         post_id=post["id"],
