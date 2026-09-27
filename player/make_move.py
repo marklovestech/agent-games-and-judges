@@ -37,8 +37,40 @@ def numbered_movelist(sans: list[str]) -> str:
     return " ".join(out)
 
 
-def latest_movelist_from_board(base_url: str, tag: str) -> tuple[list[str], int | None]:
-    """Return (longest MOVELIST under the tag, id of the post carrying it)."""
+def consistent_chain(items: list[dict], players: set[str]) -> list[dict]:
+    """Oldest-first move posts that extend the game one legal ply at a time.
+
+    Posts by non-players, malformed posts, posts whose MOVELIST does not
+    extend the accepted list by exactly one move, illegal moves, and posts
+    whose FEN disagrees with python-chess are all skipped.
+    """
+    chain: list[dict] = []
+    board = chess.Board()
+    for post in sorted(items, key=lambda p: p["id"]):
+        if players and post["author_id"] not in players:
+            continue
+        ml = re.search(r"^MOVELIST:\s*(.+)$", post["content"], re.MULTILINE)
+        fen = re.search(r"^FEN:\s*(.+)$", post["content"], re.MULTILINE)
+        if not ml or not fen:
+            continue
+        moves = strip_move_numbers(ml.group(1))
+        if len(moves) != len(board.move_stack) + 1 or moves[:-1] != [p["_san"] for p in chain]:
+            continue
+        try:
+            trial = board.copy()
+            trial.push_san(moves[-1])
+        except ValueError:
+            continue
+        if trial.fen() != fen.group(1).strip():
+            continue
+        board = trial
+        post["_san"] = moves[-1]
+        chain.append(post)
+    return chain
+
+
+def latest_movelist_from_board(base_url: str, tag: str, players: set[str]) -> tuple[list[str], int | None]:
+    """Return (validated MOVELIST under the tag, id of the post carrying its last move)."""
     req = urllib.request.Request(
         f"{base_url.rstrip('/')}/posts/search",
         data=json.dumps({"tags_contain": [tag], "limit": 100}).encode(),
@@ -47,15 +79,10 @@ def latest_movelist_from_board(base_url: str, tag: str) -> tuple[list[str], int 
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
         items = json.load(resp)["items"]
-    longest: list[str] = []
-    post_id: int | None = None
-    for post in items:
-        m = re.search(r"^MOVELIST:\s*(.+)$", post["content"], re.MULTILINE)
-        if m:
-            moves = strip_move_numbers(m.group(1))
-            if len(moves) > len(longest):
-                longest, post_id = moves, post["id"]
-    return longest, post_id
+    chain = consistent_chain(items, players)
+    if not chain:
+        return [], None
+    return [p["_san"] for p in chain], chain[-1]["id"]
 
 
 def main() -> int:
@@ -63,9 +90,10 @@ def main() -> int:
     ap.add_argument("--move", required=True, help="your move in SAN, e.g. e5 or Nf3")
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--movelist", help="moves so far, e.g. '1. e4 e5 2. Nf3' (empty string for move 1)")
-    src.add_argument("--from-board", action="store_true", help="read the longest MOVELIST under --tag")
+    src.add_argument("--from-board", action="store_true", help="rebuild the game from validated move posts under --tag")
     ap.add_argument("--reply-to", type=int, help="id of the opponent's move post (auto with --from-board)")
     ap.add_argument("--tag", default="chess_gtm_int")
+    ap.add_argument("--players", default="white_gtm,black_internet", help="comma-separated handles whose posts count")
     ap.add_argument("--base-url", default="https://agentcrossing.org")
     args = ap.parse_args()
 
@@ -74,7 +102,8 @@ def main() -> int:
 
     reply_to = args.reply_to
     if args.from_board:
-        prior, board_post_id = latest_movelist_from_board(args.base_url, args.tag)
+        players = {h.strip() for h in args.players.split(",") if h.strip()}
+        prior, board_post_id = latest_movelist_from_board(args.base_url, args.tag, players)
         reply_to = reply_to or board_post_id
     else:
         prior = strip_move_numbers(args.movelist)

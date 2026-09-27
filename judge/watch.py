@@ -39,6 +39,8 @@ MOVE_POST_RE = re.compile(
     re.DOTALL,
 )
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
+SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
+FEN_RE = re.compile(r"^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$")
 
 STAND_DOWN_TITLE = "STAND DOWN"
 STAND_DOWN_CONTENT = (
@@ -141,7 +143,9 @@ def load_or_create_token(base_url: str, handle: str | None) -> str | None:
         return None
     token = Board.signup(base_url, handle)
     TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_PATH.write_text(token + "\n")
+    fd = os.open(TOKEN_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(fd, "w") as f:
+        f.write(token + "\n")
     TOKEN_PATH.chmod(stat.S_IRUSR | stat.S_IWUSR)
     log(f"signed up as {handle}; token saved to {TOKEN_PATH}")
     return token
@@ -159,6 +163,7 @@ class MovePost:
     move_san: str
     fen: str
     movelist: list[str]
+    reply_to: list[int]
 
 
 def strip_move_numbers(text: str) -> list[str]:
@@ -172,14 +177,18 @@ def parse_move_post(post: dict) -> MovePost | None:
     if not m:
         return None
     moves = strip_move_numbers(m.group("move"))
-    if len(moves) != 1:
+    movelist = strip_move_numbers(m.group("movelist"))
+    fen = m.group("fen")
+    # Every token must look like chess before it can be echoed in a ruling.
+    if len(moves) != 1 or not all(SAN_RE.match(s) for s in moves + movelist) or not FEN_RE.match(fen):
         return None
     return MovePost(
         post_id=post["id"],
         author=post["author_id"],
         move_san=moves[0],
-        fen=m.group("fen"),
-        movelist=strip_move_numbers(m.group("movelist")),
+        fen=fen,
+        movelist=movelist,
+        reply_to=list(post.get("reply_to_post_ids", [])),
     )
 
 
@@ -243,6 +252,12 @@ class Game:
         elif self.board.is_insufficient_material():
             result = "1/2-1/2"
             text = "Draw by insufficient material. 1/2-1/2. " + text
+        elif self.board.is_fivefold_repetition():
+            result = "1/2-1/2"
+            text = "Draw by fivefold repetition. 1/2-1/2. " + text
+        elif self.board.is_seventyfive_moves():
+            result = "1/2-1/2"
+            text = "Draw by the seventy-five-move rule. 1/2-1/2. " + text
         elif self.board.can_claim_threefold_repetition() or self.board.can_claim_fifty_moves():
             text = "A draw can be claimed here. " + text
         if result:
@@ -318,6 +333,7 @@ class Judge:
         self.state = state
         self.game = Game(args.white, args.black)
         self.players = {args.white, args.black}
+        self.last_move_post: int | None = None
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
 
     # -- posting -----------------------------------------------------------
@@ -338,25 +354,27 @@ class Judge:
         needed = POST_COST * (2 if reserve_for_stand_down else 1)
         return rep + 1e-9 >= needed
 
-    def post(self, title: str, content: str, reply_to: int, *, is_stand_down: bool = False) -> None:
+    def post(self, title: str, content: str, reply_to: int, *, is_stand_down: bool = False) -> bool:
+        """Return True if the post was sent (or would have been, in dry-run)."""
         body = {"title": title, "content": content, "tags": [self.args.tag], "reply_to_post_ids": [reply_to]}
         if self.quiet:
             log(f"(quiet) would reply to {reply_to} with {title!r}: {content}")
-            return
+            return False
         print("POST /posts/create body:\n" + json.dumps(body, indent=2), flush=True)
         if self.args.dry_run:
             log("dry-run: not sent")
-            return
+            return True
         if not self.can_afford(reserve_for_stand_down=not is_stand_down):
             log("not enough reputation to post while keeping a STAND DOWN in reserve; skipped")
-            return
+            return False
         try:
             created = self.board.create_post(body)
         except ApiError as e:
             log(f"post failed: {e}")
-            return
+            return False
         self.state.posts_made += 1
         log(f"posted {created.get('id')}")
+        return True
 
     def stand_down(self, post: dict, reason: str) -> None:
         log(f"VIOLATION in post {post['id']} by {post['author_id']}: {reason}")
@@ -365,7 +383,12 @@ class Judge:
             log("STAND DOWN already issued; not posting again")
             return
         self.quiet = False  # a STAND DOWN is never suppressed while one is not already active
-        self.post(STAND_DOWN_TITLE, STAND_DOWN_CONTENT.format(post_id=post["id"]), post["id"], is_stand_down=True)
+        sent = self.post(
+            STAND_DOWN_TITLE, STAND_DOWN_CONTENT.format(post_id=post["id"]), post["id"], is_stand_down=True
+        )
+        if not sent:
+            log("STAND DOWN could not be posted; will retry on the next violation. Human attention needed.")
+            return
         self.state.stand_down_post = post["id"]
         log("STAND DOWN issued. Posting is now disabled until a human restarts with --resume.")
         self.quiet = True
@@ -380,7 +403,7 @@ class Judge:
             {"author_id_contains": self.args.black},
         ):
             try:
-                for p in self.board.search(**filt):
+                for p in self.board.search(show_hidden=True, **filt):
                     posts[p["id"]] = p
             except ApiError as e:
                 log(f"search {filt} failed: {e}")
@@ -402,7 +425,11 @@ class Judge:
             self.stand_down(post, "content is not the three-line MOVE/FEN/MOVELIST format")
             return
 
+        if self.last_move_post is not None and self.last_move_post not in mp.reply_to:
+            log(f"warning: post {mp.post_id} does not reply to the previous move post {self.last_move_post}")
         ruling = self.game.apply(mp)
+        if ruling.ok:
+            self.last_move_post = mp.post_id
         ply = len(self.game.moves)
         status = "OK" if ruling.ok else "RULING"
         log(f"{status}: post {mp.post_id} {author} {mp.move_san} -> {self.game.board.fen()}")
