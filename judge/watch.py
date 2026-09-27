@@ -146,6 +146,9 @@ class Board:
     def create_post(self, body: dict) -> dict:
         return self._request("POST", "/posts/create", body, auth=True)
 
+    def support_request(self, message: str) -> dict:
+        return self._request("POST", "/me/support-requests", {"message": message}, auth=True)
+
     @staticmethod
     def signup(base_url: str, handle: str) -> str:
         req = urllib.request.Request(f"{base_url.rstrip('/')}/signup?user_id={handle}", method="POST")
@@ -398,18 +401,24 @@ class State:
     posts_made: int = 0
     stand_down_post: int | None = None
     handled: set[int] = field(default_factory=set)
+    defiant: dict[str, list[int]] = field(default_factory=dict)  # player -> posts made after STAND DOWN
 
     @classmethod
     def load(cls, path: Path) -> State:
         if not path.exists():
             return cls()
         raw = json.loads(path.read_text())
-        return cls(set(raw["seen"]), raw["posts_made"], raw.get("stand_down_post"))
+        return cls(set(raw["seen"]), raw["posts_made"], raw.get("stand_down_post"), defiant=raw.get("defiant", {}))
 
     def save(self, path: Path) -> None:
         path.write_text(
             json.dumps(
-                {"seen": sorted(self.seen), "posts_made": self.posts_made, "stand_down_post": self.stand_down_post},
+                {
+                    "seen": sorted(self.seen),
+                    "posts_made": self.posts_made,
+                    "stand_down_post": self.stand_down_post,
+                    "defiant": self.defiant,
+                },
                 indent=1,
             )
         )
@@ -471,6 +480,37 @@ class Judge:
         """Post the notice that lets White open a new game. Only a human should trigger this."""
         return self.post(NEW_GAME_TITLE, NEW_GAME_CONTENT, reply_to)
 
+    def escalation_message(self) -> str:
+        """Ask the site admin to suspend players who kept posting after STAND DOWN. Chess context only."""
+        offenders = "; ".join(
+            f"{handle} (posts {', '.join(str(i) for i in ids)})" for handle, ids in sorted(self.state.defiant.items())
+        )
+        return (
+            f"Hello. I am the referee account for a chess game played under the tag {self.args.tag}. "
+            f"After I posted a STAND DOWN notice (post {self.state.stand_down_post}) the following accounts kept "
+            f"posting under the tag instead of stopping: {offenders}. The rules of the game require players to "
+            "stop immediately on STAND DOWN. Would you please suspend or block these accounts from posting? "
+            "Thank you for running the site."
+        )
+
+    def escalate(self) -> bool:
+        """Send the admin request. Only a human should trigger this."""
+        if self.state.stand_down_post is None or not self.state.defiant:
+            log("nothing to escalate: no STAND DOWN in force, or nobody has posted since it")
+            return False
+        body = {"message": self.escalation_message()}
+        print("POST /me/support-requests body:\n" + json.dumps(body, indent=2), flush=True)
+        if self.args.dry_run:
+            log("dry-run: not sent")
+            return True
+        try:
+            created = self.board.support_request(body["message"])
+        except ApiError as e:
+            log(f"support request failed: {e}")
+            return False
+        log(f"support request sent (id {created.get('id')})")
+        return True
+
     def stand_down(self, post: dict, reason: str) -> bool:
         """Return True once the violation needs no further action from this judge."""
         log(f"VIOLATION in post {post['id']} by {post['author_id']}: {reason}")
@@ -512,19 +552,20 @@ class Judge:
     def handle(self, post: dict) -> bool:
         """Return True if the post is fully dealt with and need not be revisited."""
         author = post["author_id"]
-        if post.get("title") == NEW_GAME_TITLE and self.game.over:
-            if not self.args.handle or author != self.args.handle:
-                log(f"post {post['id']}: NEW GAME APPROVED notice not from this referee; ignoring")
-                return True
-            log(f"post {post['id']}: NEW GAME APPROVED; resetting the board for a new game")
-            self.game = Game(self.args.white, self.args.black)
-            self.last_move_post = None
-            return True
-        if author == self.args.handle:
+        if self.args.handle and author == self.args.handle:
+            if post.get("title") == NEW_GAME_TITLE and self.game.over:
+                log(f"post {post['id']}: NEW GAME APPROVED; resetting the board for a new game")
+                self.game = Game(self.args.white, self.args.black)
+                self.last_move_post = None
             return True
         if author not in self.players:
             log(f"note: post {post['id']} by non-player {author} under the game tag: {post['title']!r}")
             return True
+        if self.state.stand_down_post is not None and post["id"] > self.state.stand_down_post:
+            log(f"DEFIANCE: post {post['id']} by {author} after STAND DOWN on post {self.state.stand_down_post}")
+            self.state.defiant.setdefault(author, [])
+            if post["id"] not in self.state.defiant[author]:
+                self.state.defiant[author].append(post["id"])
 
         if self.args.tag not in post.get("tags", []):
             return self.stand_down(post, "player posted outside the game tag")
@@ -553,7 +594,7 @@ class Judge:
             log(f"no new game may start until a human runs --approve-new-game {mp.post_id}")
         return True
 
-    def cycle(self) -> None:
+    def cycle(self, save: bool = True) -> None:
         self.pending_violation = False
         self.search_failed = False
         for post in self.fetch_all():
@@ -567,7 +608,8 @@ class Judge:
                 self.state.handled.add(post["id"])
             else:
                 self.pending_violation = True
-        self.state.save(self.args.state)
+        if save:
+            self.state.save(self.args.state)
 
 
 # --------------------------------------------------------------------------
@@ -592,6 +634,11 @@ def main() -> int:
         metavar="POST_ID",
         help="post NEW GAME APPROVED as a reply to the final move post, then exit (human decision)",
     )
+    ap.add_argument(
+        "--escalate",
+        action="store_true",
+        help="after a STAND DOWN, ask the site admin to suspend players who kept posting, then exit (human decision)",
+    )
     args = ap.parse_args()
 
     if not TAG_RE.match(args.tag):
@@ -606,18 +653,24 @@ def main() -> int:
     if args.resume and state.stand_down_post is not None:
         log(f"resuming after STAND DOWN on post {state.stand_down_post}")
         state.stand_down_post = None
+        state.defiant = {}
     judge = Judge(args, Board(args.base_url, token), state)
 
     if args.approve_new_game is not None:
+        # Read-only replay: a running watcher owns the state file, so do not write to it here.
+        judge.cycle(save=False)
         if state.stand_down_post is not None:
             log("a STAND DOWN is in force; refusing to approve a new game (use --resume first)")
             return 1
-        judge.cycle()
         if judge.search_failed or not judge.game.over:
             log("could not confirm the current game is over; refusing to approve a new one")
             return 1
         judge.quiet = False
         return 0 if judge.approve_new_game(args.approve_new_game) else 1
+
+    if args.escalate:
+        judge.cycle(save=False)
+        return 0 if judge.escalate() else 1
 
     pid_path = args.state.with_name("watch.pid")
     pid_path.write_text(str(os.getpid()))
