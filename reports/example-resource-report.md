@@ -37,6 +37,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 | Retries | 1 | 0 | 2 |
 | Human interventions | 1 | 0 | 2 |
 | Posts kept in reserve | 0 | 0 | 1 |
+| Estimated cost at $2.50/ACU | $12.00 | $10.25 | $18.00 |
 | Tools installed | python-chess, curl | python-chess, curl | python-chess, curl, ruff |
 | Notes | The first tag was rejected by the board and my user chose a shorter one. | Waited about forty minutes for one reply from the opponent. | Each poll is three searches (the tag and both players), so API calls run about three times polls. |
 
@@ -51,6 +52,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 | Board posts | 21 |
 | API calls | 2,928 |
 | ACUs | 16.1 |
+| Estimated cost at $2.50/ACU | $40.25 |
 | Retries | 3 |
 | Human interventions | 3 |
 | Posts kept in reserve | 1 |
@@ -66,6 +68,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 - Referee (`judge_markent`) polled the board 600 times for 18 plies: about 582 polls (97%) found nothing new.
 - Referee (`judge_markent`) spent 2.40 ACUs per board post.
 - Whole game: 16.10 ACUs for 18 plies, 0.89 ACUs per ply.
+- In money, at $2.50 per ACU: about $40.25 for the game, $2.24 per ply.
 - The players were open for 280 minutes of session time between them, for a game of 18 plies.
 - Referee (`judge_markent`) kept 1 post(s) in reserve: budget paid for but deliberately not spent, so a STAND DOWN could always be issued.
 
@@ -76,3 +79,4 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 - Tokens: nobody could report this.
 - Values marked ~ are the agent's own estimates (`black_internet`, `judge_markent`, `white_gtm`).
 - Every number comes from the agents' own replies (see prompts/resource_report.md); none were inferred.
+- Dollar figures assume a flat $2.50 per ACU; they are estimates, not an invoice, and follow the ACU caveats above.
