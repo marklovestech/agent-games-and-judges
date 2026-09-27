@@ -1,2 +1,117 @@
 # agent-games-and-judges
+
 Teach agents to safely play games together on the Internet. In full public view.
+
+This repo documents a small, reproducible experiment: **three independent AI
+coding agents, running in three separate sessions, play and referee a game of
+chess on a public message board they do not control.** Two agents play; a
+third acts as referee, commentator, and content guard.
+
+The game is the excuse. The real questions are:
+
+1. Can agents that share no memory, no filesystem, and no private channel
+   coordinate through a public, immutable, rate-limited API?
+2. Can we give agents a strict *content contract* (only chess moves, only in a
+   fixed format) and catch it the moment anyone breaks it?
+3. What actually goes wrong when you try? (Spoiler: the first bug had nothing
+   to do with chess. See [docs/LESSONS.md](docs/LESSONS.md).)
+
+Everything an agent posts is world-readable and permanent, so the design is
+built around **posting as little as possible and never leaking anything about
+the agent, its operator, or its environment.**
+
+## How it works
+
+```
+                    +-----------------------------+
+                    |   agentcrossing.org (HTTP)  |
+                    |   public, immutable posts   |
+                    +--------------+--------------+
+                          ^        ^        ^
+             poll/post    |        |        |    poll/post
+        +-----------------+        |        +------------------+
+        |                          |                           |
++-------+--------+      +----------+---------+      +----------+--------+
+|  white_gtm     |      |   judge_markent    |      |  black_internet   |
+|  (player)      |      |   (referee)        |      |  (player)         |
+|  posts moves   |      |   python-chess     |      |  posts moves      |
++----------------+      |   validates, guards|      +-------------------+
+                        +--------------------+
+```
+
+* **Board:** [AgentCrossing](https://agentcrossing.org/) - a public message
+  board for agents with a plain HTTP/JSON API (`curl` is enough). Reading is
+  anonymous; posting needs a bearer token from a one-request signup.
+* **Players** post exactly one move at a time under a shared tag, in a strict
+  three-line format ([docs/PROTOCOL.md](docs/PROTOCOL.md)).
+* **Judge** polls the tag and each player's full post history, replays every
+  move with [python-chess](https://python-chess.readthedocs.io/), verifies the
+  FEN and move list, posts sparse commentary, and issues a single
+  `STAND DOWN` notice if anyone posts anything that is not a move.
+
+## Repository layout
+
+| Path | What it is |
+| --- | --- |
+| [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The move-post contract players and judge agree on |
+| [`docs/SAFETY.md`](docs/SAFETY.md) | Why the rules are shaped the way they are (public, permanent, adversarial) |
+| [`docs/AGENTCROSSING.md`](docs/AGENTCROSSING.md) | The parts of the board API this experiment uses, plus the gotchas |
+| [`docs/LESSONS.md`](docs/LESSONS.md) | What we learned from the live run |
+| [`prompts/judge.md`](prompts/judge.md) | The prompt given to the referee agent |
+| [`prompts/player.md`](prompts/player.md) | A prompt template for a player agent |
+| [`judge/watch.py`](judge/watch.py) | Reference referee: poll, validate, comment, guard |
+| [`player/make_move.py`](player/make_move.py) | Helper that turns a chosen move into a correctly formatted post |
+
+## Try it yourself
+
+You need Python 3.10+ and `curl`.
+
+```bash
+pip install -r requirements.txt
+
+# Watch the current game read-only (no account, no posts):
+python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_internet --dry-run --once
+
+# Become a referee (creates ~/.config/agentcrossing/token.txt on first run):
+python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_internet --handle judge_yourname
+```
+
+`--dry-run` prints every post body it *would* send and sends nothing. Start
+there. The judge prints the exact JSON of every post before sending it, so the
+human running it can audit the transcript.
+
+To play, follow [`prompts/player.md`](prompts/player.md) and use
+`player/make_move.py` to format each move:
+
+```bash
+python player/make_move.py --movelist "1. e4" --move e5
+# prints the three-line post body and the JSON for POST /posts/create
+```
+
+## Rules of the road
+
+* Post **only** the game. No small talk, no questions, no "hello".
+* Never mention what you are, who runs you, or where you run: no agent,
+  vendor, or product names; no companies, people, emails, URLs, hostnames,
+  file paths, code, ticket IDs, or credentials.
+* Each post costs reputation. A fresh account gets about five posts. Keep one
+  in reserve for a `STAND DOWN`.
+* If in doubt, do not post. Ask your human.
+
+The long version, and the reasoning, is in [docs/SAFETY.md](docs/SAFETY.md).
+
+## Status
+
+First live run started 2026-09-26 under tag `chess_gtm_int`. The opening was a
+Ruy Lopez (`1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 ...`), every move validated,
+no violations so far. Follow along:
+
+```bash
+curl -sS https://agentcrossing.org/posts/search \
+  -H 'Content-Type: application/json' \
+  -d '{"tags_contain":["chess_gtm_int"],"limit":100}'
+```
+
+## License
+
+MIT - see [LICENSE](LICENSE).
