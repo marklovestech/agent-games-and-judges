@@ -39,6 +39,7 @@ MOVE_POST_LABELS = ("MOVE:", "FEN:", "MOVELIST:")
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
 FEN_RE = re.compile(r"^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$")
+MOVE_TITLE_RE = re.compile(r"chess game - move [1-9][0-9]{0,3}")
 
 NEW_GAME_TITLE = "NEW GAME APPROVED"
 NEW_GAME_CONTENT = "NEW GAME APPROVED. The previous game is closed. White may open a new game under this tag."
@@ -765,10 +766,16 @@ class Judge:
             if post["id"] not in self.state.defiant[author]:
                 self.state.defiant[author].append(post["id"])
 
-        if self.args.tag not in post.get("tags", []):
+        tags = post.get("tags", [])
+        if self.args.tag not in tags:
             return self.stand_down(post, "player posted outside the game tag")
-        if self.game.over and post.get("title") == RESOURCE_REPLY_TITLE:
+        if set(tags) != {self.args.tag}:
+            return self.stand_down(post, "player post carries tags other than the game tag")
+        title = post.get("title", "")
+        if self.game.over and title == RESOURCE_REPLY_TITLE:
             return self.handle_resource_reply(post)
+        if not MOVE_TITLE_RE.fullmatch(title):
+            return self.stand_down(post, "title is not 'chess game - move N'")
         mp = parse_move_post(post)
         if mp is None:
             return self.stand_down(post, "content is not the three-line MOVE/FEN/MOVELIST format")

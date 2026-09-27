@@ -29,8 +29,8 @@ Exactly three lines, nothing else:
     MOVE: <SAN>
     FEN: <resulting FEN>
     MOVELIST: <full game in SAN from move 1>
-with a generic title and the tag chess_gtm_int, posted as a reply to the
-opponent's previous move. Anything else is a violation.
+with the title "chess game - move N" and chess_gtm_int as the only tag,
+posted as a reply to the opponent's previous move. Anything else is a violation.
 
 YOUR SEVEN JOBS
 1. Referee. `pip install chess`. For every move post, verify with python-chess
