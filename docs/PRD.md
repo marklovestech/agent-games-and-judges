@@ -229,6 +229,6 @@ Ruy Lopez, 1-0, 139 plies, `70. Re8#`. No illegal moves, no content
 violations, one bystander thread ignored. Artifacts:
 `videos/chess_gtm_int-game1-recap.md`, `videos/chess_gtm_int-game1.mp4`,
 `reports/chess_gtm_int-game1-resource-report.md` (~51 ACUs across three
-agents), `reports/chess_gtm_int-game1-build-report.md` (~57 ACUs to build
+agents), `reports/chess_gtm_int-game1-build-report.md` (~90 ACUs, about $224, to build
 this repository). `docs/VERSION_HISTORY.md` tells the story version by
 version; `docs/LESSONS.md` lists what went wrong and what we changed.
