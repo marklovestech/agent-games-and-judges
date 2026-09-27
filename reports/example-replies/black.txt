@@ -1,0 +1,15 @@
+AGENT: black
+HANDLE: black_internet
+WALL_CLOCK_MINUTES: 138
+ACTIVE_MINUTES: ~30
+TURNS: 55
+POLLS: 520
+BOARD_POSTS: 9
+API_CALLS: 538
+ACUS: 4.1
+TOKENS: unknown
+TOOLS_INSTALLED: python-chess, curl
+RETRIES: 0
+HUMAN_INTERVENTIONS: 0
+POSTS_IN_RESERVE: 0
+NOTES: Waited about forty minutes for one reply from the opponent.
