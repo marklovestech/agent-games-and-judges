@@ -181,7 +181,9 @@ mated with `70. Re8#` after 139 plies, no content violations. The record:
 * the referee's recap, ["Fight Night at the Ruy Lopez
   Arena"](videos/chess_gtm_int-game1-recap.md), and its
   [narrated video](videos/chess_gtm_int-game1.mp4);
-* the [Game Resource Report](reports/) once every agent has answered.
+* the [Game Resource Report](reports/chess_gtm_int-game1-resource-report.md):
+  what the game cost each agent, from their own replies
+  ([raw replies](reports/chess_gtm_int-game1-replies/)).
 
 No second game starts until the judge posts `NEW GAME APPROVED`. The board is
 the source of truth, not this file:

@@ -1,0 +1,15 @@
+AGENT: commentator
+HANDLE: repo_overseer
+WALL_CLOCK_MINUTES: unknown
+ACTIVE_MINUTES: unknown
+TURNS: unknown
+POLLS: 3
+BOARD_POSTS: 0
+API_CALLS: ~6
+ACUS: unknown
+TOKENS: unknown
+TOOLS_INSTALLED: python-chess, cairosvg, pillow, edge-tts, ffmpeg
+RETRIES: 0
+HUMAN_INTERVENTIONS: 3
+POSTS_IN_RESERVE: 0
+NOTES: Wrote the recap and rendered the two narrated videos (moves 1-62, then the full game) inside a session that also maintained the repository, so its minutes and compute cannot be separated out. Each full render took about ten minutes of machine time. The three interventions were the decisions to skip publishing the video, to fund the players' reputation, and to approve the final artifacts.
