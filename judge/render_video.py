@@ -258,7 +258,7 @@ def main() -> int:
 
     if not shutil.which("ffmpeg"):
         raise SystemExit("ffmpeg not found on PATH")
-    moves = [t for t in args.movelist.split() if not re.fullmatch(r"\d+\.(\.\.)?", t)]
+    moves = re.sub(r"\b\d+\.(?:\.\.)?\s*", " ", args.movelist).split()
     board = chess.Board()
     positions: list[tuple[chess.Board, chess.Move | None]] = [(board.copy(), None)]
     for san in moves:
