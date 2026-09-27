@@ -35,12 +35,7 @@ TOKEN_PATH = Path.home() / ".config" / "agentcrossing" / "token.txt"
 POST_COST = 0.2
 TAG_RE = re.compile(r"^[a-z0-9_-]{2,15}$")
 
-MOVE_POST_RE = re.compile(
-    r"^MOVE:\s*(?P<move>\S.*?)\s*\n"
-    r"FEN:\s*(?P<fen>\S.*?)\s*\n"
-    r"MOVELIST:\s*(?P<movelist>\S.*?)\s*$",
-    re.DOTALL,
-)
+MOVE_POST_LABELS = ("MOVE:", "FEN:", "MOVELIST:")
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
 FEN_RE = re.compile(r"^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$")
@@ -159,21 +154,35 @@ class Board:
             raise ApiError(f"{method} {path} -> {e.reason}") from None
         return json.loads(raw) if raw else {}
 
-    def search(self, **filt) -> list[dict]:
-        """Follow next_cursor so games longer than one page are still complete."""
+    def search(self, *, max_items: int, after_id: int = 0, **filt) -> list[dict]:
+        """Follow next_cursor so games longer than one page are still complete.
+
+        Results are newest-first, so paging stops as soon as a page reaches
+        `after_id`; only posts with a larger id are returned. `max_items` bounds
+        the memory one search may consume: exceeding it is an error, not a
+        silently truncated history.
+        """
         filt.setdefault("limit", 100)
         items: list[dict] = []
         cursors: set[str] = set()
         while True:
             page = self._request("POST", "/posts/search", filt)
-            items.extend(page["items"])
+            fresh = [p for p in page["items"] if p["id"] > after_id]
+            if len(items) + len(fresh) > max_items:
+                raise ApiError(f"search returned more than {max_items} posts; refusing to load the whole history")
+            items.extend(fresh)
             cursor = page.get("next_cursor")
-            if not cursor or not page["items"]:
+            if not cursor or not page["items"] or len(fresh) < len(page["items"]):
                 return items
             if cursor in cursors:
                 raise ApiError(f"search cursor repeated; history incomplete after {len(items)} posts")
             cursors.add(cursor)
             filt["cursor"] = cursor
+
+    def latest_post_id(self) -> int:
+        """Newest post id anywhere on the board, or 0 if there are none."""
+        page = self._request("POST", "/posts/search", {"limit": 1, "show_hidden": True, "include_content": False})
+        return page["items"][0]["id"] if page["items"] else 0
 
     def me(self) -> dict:
         return self._request("GET", "/me", auth=True)
@@ -229,13 +238,20 @@ def strip_move_numbers(text: str) -> list[str]:
 
 def parse_move_post(post: dict) -> MovePost | None:
     """Return a MovePost if the content is exactly the three-line format."""
-    content = post["content"].strip().replace("\r\n", "\n")
-    m = MOVE_POST_RE.match(content)
-    if not m:
+    lines = post["content"].strip().replace("\r\n", "\n").split("\n")
+    if len(lines) != len(MOVE_POST_LABELS):
         return None
-    moves = strip_move_numbers(m.group("move"))
-    movelist = strip_move_numbers(m.group("movelist"))
-    fen = m.group("fen")
+    fields = []
+    for line, label in zip(lines, MOVE_POST_LABELS):
+        if not line.startswith(label):
+            return None
+        value = line[len(label) :].strip()
+        if not value:
+            return None
+        fields.append(value)
+    move_text, fen, movelist_text = fields
+    moves = strip_move_numbers(move_text)
+    movelist = strip_move_numbers(movelist_text)
     # Every token must look like chess before it can be echoed in a ruling.
     if len(moves) != 1 or not all(SAN_RE.match(s) for s in moves + movelist) or not FEN_RE.match(fen):
         return None
@@ -497,6 +513,8 @@ class Judge:
         self.last_posted_id: int | None = None
         self.game_number = 1  # 1 + NEW GAME APPROVED posts seen; rebuilt from the board like the game itself
         self.dry_requested = False  # dry-run printed the request; nothing is persisted about it
+        self.after_id = 0  # every post up to this id has been fetched and handled by this process
+        self.watermark = 0  # newest board post id read before this cycle's searches began
 
     # -- posting -----------------------------------------------------------
 
@@ -720,14 +738,29 @@ class Judge:
     # -- one poll cycle ----------------------------------------------------
 
     def fetch_all(self) -> list[dict]:
+        """Every post newer than `after_id` that any of the three searches can see.
+
+        The watermark is read first: any post with a smaller id existed before the
+        searches ran and so is in the results, which makes it a safe new `after_id`.
+        Posts created mid-cycle have larger ids and are fetched again next cycle.
+        """
         posts: dict[int, dict] = {}
+        try:
+            self.watermark = self.board.latest_post_id()
+        except ApiError as e:
+            log(f"reading the latest post id failed: {e}; skipping this cycle")
+            self.pending_violation = True
+            self.search_failed = True
+            return []
         for filt in (
             {"tags_contain": [self.args.tag]},
             {"author_id_contains": self.args.white},
             {"author_id_contains": self.args.black},
         ):
             try:
-                for p in self.board.search(show_hidden=True, **filt):
+                for p in self.board.search(
+                    max_items=self.args.max_posts, after_id=self.after_id, show_hidden=True, **filt
+                ):
                     posts[p["id"]] = p
             except ApiError as e:
                 log(f"search {filt} failed: {e}; skipping this cycle")
@@ -815,9 +848,11 @@ class Judge:
                 self.state.handled.add(post["id"])
             else:
                 self.pending_violation = True
-        if not (self.search_failed or self.pending_violation) and self.state.stand_down_post is None:
-            self.quiet = False
-            self.request_resources()
+        if not self.pending_violation and not self.search_failed:
+            self.after_id = max(self.after_id, self.watermark)
+            if self.state.stand_down_post is None:
+                self.quiet = False
+                self.request_resources()
         if save:
             self.state.save(self.args.state)
 
@@ -837,6 +872,12 @@ def main() -> int:
     )
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
     ap.add_argument("--interval", type=float, default=15.0)
+    ap.add_argument(
+        "--max-posts",
+        type=int,
+        default=2000,
+        help="most posts one search may load per cycle; more than this is treated as a failed read",
+    )
     ap.add_argument("--once", action="store_true", help="one poll cycle, then exit")
     ap.add_argument("--dry-run", action="store_true", help="print posts, send nothing")
     ap.add_argument("--resume", action="store_true", help="a human has cleared a previous STAND DOWN")
