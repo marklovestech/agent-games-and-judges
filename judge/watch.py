@@ -442,7 +442,6 @@ class State:
     resource_replies: dict[str, int] = field(default_factory=dict)  # player -> id of its accepted RESOURCE REPORT
     started: float = field(default_factory=time.time)  # first start of this watcher, for its own wall clock
     polls: int = 0
-    game_number: int = 1  # bumped on every NEW GAME APPROVED; names the reply files and the report
     final_move_post: int | None = None  # a finished game whose RESOURCE REPORT REQUEST is still unsent
 
     @classmethod
@@ -460,7 +459,6 @@ class State:
             resource_replies=raw.get("resource_replies", {}),
             started=raw.get("started", time.time()),
             polls=raw.get("polls", 0),
-            game_number=raw.get("game_number", 1),
             final_move_post=raw.get("final_move_post"),
         )
 
@@ -477,7 +475,6 @@ class State:
                     "resource_replies": self.resource_replies,
                     "started": self.started,
                     "polls": self.polls,
-                    "game_number": self.game_number,
                     "final_move_post": self.final_move_post,
                 },
                 indent=1,
@@ -498,6 +495,8 @@ class Judge:
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
         self.readonly = False  # one-shot commands: never post from a replay whose state is not saved
         self.last_posted_id: int | None = None
+        self.game_number = 1  # 1 + NEW GAME APPROVED posts seen; rebuilt from the board like the game itself
+        self.dry_requested = False  # dry-run printed the request; nothing is persisted about it
 
     # -- posting -----------------------------------------------------------
 
@@ -550,7 +549,7 @@ class Judge:
         return self.args.state.with_name("replies")
 
     def game_name(self) -> str:
-        return self.args.game_name or f"{self.args.tag}-game{self.state.game_number}"
+        return self.args.game_name or f"{self.args.tag}-game{self.game_number}"
 
     def request_resources(self) -> None:
         """Ask both players, on the board, what the game cost them. One post, right after the final move.
@@ -560,7 +559,7 @@ class Judge:
         if self.state.final_move_post is None or self.state.resource_request is not None:
             return
         if self.post(RESOURCE_REQUEST_TITLE, RESOURCE_REQUEST_CONTENT, self.state.final_move_post):
-            self.state.resource_request = self.last_posted_id  # None in dry-run
+            self.state.resource_request = self.last_posted_id
             self.state.final_move_post = None
             self.state.resource_replies = {}
             log("RESOURCE REPORT REQUEST posted; waiting for one RESOURCE REPORT reply per player")
@@ -570,7 +569,7 @@ class Judge:
     def replies_to_request(self, post: dict) -> bool:
         if self.state.resource_request is not None:
             return self.state.resource_request in post.get("reply_to_post_ids", [])
-        return self.args.dry_run and self.state.final_move_post is None  # dry-run "posted" it without an id
+        return self.dry_requested
 
     def parse_resource_reply(self, post: dict) -> tuple[resource_report.AgentReport | None, str]:
         """Strictly validate a player's RESOURCE REPORT post. Returns (report, reason-if-rejected)."""
@@ -744,8 +743,9 @@ class Judge:
                 self.last_move_post = None
                 self.state.resource_request = None
                 self.state.resource_replies = {}
-                self.state.final_move_post = None
-                self.state.game_number += 1
+                self.game_number += 1
+                if self.state.final_move_post is not None:
+                    log("warning: the previous game's RESOURCE REPORT REQUEST was never sent; still retrying")
             elif post.get("title") == RESOURCE_REQUEST_TITLE and self.state.resource_request is None:
                 self.state.resource_request = post["id"]  # an earlier run posted it
                 self.state.final_move_post = None
@@ -786,7 +786,9 @@ class Judge:
             brief = self.args.state.with_name("recap_brief.md")
             brief.write_text(self.game.recap_brief())
             log(f"recap brief written to {brief}; the referee writes the recap from it (see prompts/judge.md)")
-            if not self.quiet:
+            if self.args.dry_run:  # print it, persist nothing: a real watcher must not inherit a dry run's debt
+                self.dry_requested = self.post(RESOURCE_REQUEST_TITLE, RESOURCE_REQUEST_CONTENT, mp.post_id)
+            elif not self.quiet:
                 self.state.final_move_post = mp.post_id
             self.request_resources()
             log(f"no new game may start until a human runs --approve-new-game {mp.post_id}")
