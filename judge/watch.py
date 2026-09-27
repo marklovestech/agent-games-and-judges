@@ -42,6 +42,11 @@ MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
 FEN_RE = re.compile(r"^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$")
 
+NEW_GAME_TITLE = "NEW GAME APPROVED"
+NEW_GAME_CONTENT = "NEW GAME APPROVED. The previous game is closed. White may open a new game under this tag."
+NOT_APPROVED_TEXT = (
+    "The game is over. No new game may start until the referee posts a NEW GAME APPROVED notice under this tag."
+)
 STAND_DOWN_TITLE = "STAND DOWN"
 STAND_DOWN_CONTENT = (
     "STAND DOWN. Non-permitted content detected in post {post_id}. All "
@@ -220,6 +225,19 @@ class Ruling:
     result: str | None = None  # "1-0", "0-1", "1/2-1/2" or None
 
 
+@dataclass
+class MoveFact:
+    """One accepted ply, recorded so the post-game recap has facts to work from."""
+
+    ply: int
+    side: str
+    san: str
+    captured: str | None
+    check: bool
+    material_after: int  # White minus Black, pawns
+    legal_alternatives: int
+
+
 class Game:
     def __init__(self, white: str, black: str):
         self.white = white
@@ -227,6 +245,8 @@ class Game:
         self.moves: list[str] = []
         self.board = chess.Board()
         self.over = False
+        self.result: str | None = None
+        self.facts: list[MoveFact] = []
 
     def expected_author(self) -> str:
         return self.white if self.board.turn == chess.WHITE else self.black
@@ -236,6 +256,8 @@ class Game:
 
     def apply(self, mp: MovePost) -> Ruling:
         if self.over:
+            if len(mp.movelist) == 1:
+                return Ruling(False, NOT_APPROVED_TEXT)
             return Ruling(False, "The game is already over; no further moves are accepted.")
         if mp.author != self.expected_author():
             return Ruling(False, f"Out of turn. It is {self.side_to_move()}'s move.")
@@ -255,8 +277,23 @@ class Game:
             return Ruling(False, f"FEN mismatch after {mp.move_san}. Expected {trial.fen()}.")
 
         captured = self.board.piece_at(move.to_square)
+        if captured is None and self.board.is_en_passant(move):
+            captured = chess.Piece(chess.PAWN, not self.board.turn)
+        legal_alternatives = self.board.legal_moves.count() - 1
+        side = self.side_to_move()
         self.board = trial
         self.moves.append(mp.move_san)
+        self.facts.append(
+            MoveFact(
+                ply=len(self.moves),
+                side=side,
+                san=mp.move_san,
+                captured=chess.piece_name(captured.piece_type) if captured else None,
+                check=self.board.is_check(),
+                material_after=self.material_balance(),
+                legal_alternatives=legal_alternatives,
+            )
+        )
 
         text = self.describe(move, captured)
         result = None
@@ -279,7 +316,42 @@ class Game:
             text = "A draw can be claimed here. " + text
         if result:
             self.over = True
+            self.result = result
         return Ruling(True, text, result)
+
+    def recap_brief(self) -> str:
+        """Facts for the referee's post-game recap. Chess content only; safe to share."""
+        lines = [
+            "# Post-game recap brief",
+            "",
+            f"Result: {self.result or 'unfinished'}",
+            f"Plies: {len(self.moves)}",
+            f"Final FEN: {self.board.fen()}",
+            "Move list: " + " ".join(self.moves),
+            "",
+            "| Ply | Side | Move | Captured | Check | Material (W-B) | Other legal moves |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for f in self.facts:
+            lines.append(
+                f"| {f.ply} | {f.side} | {f.san} | {f.captured or ''} | {'yes' if f.check else ''} | "
+                f"{f.material_after:+d} | {f.legal_alternatives} |"
+            )
+        swings = [
+            f"ply {b.ply} {b.side} {b.san}: material went {a.material_after:+d} -> {b.material_after:+d}"
+            for a, b in zip(self.facts, self.facts[1:])
+            if abs(b.material_after - a.material_after) >= 2
+        ]
+        lines += ["", "Material swings of two or more pawns (look here first for the blunders and the brilliancies):"]
+        lines += [f"- {s}" for s in swings] or ["- none"]
+        lines += [
+            "",
+            "Recap checklist for the referee: pick one theme and voice for the whole piece; nickname pieces by",
+            "what they actually did (a knight that forked twice earns a name, a bishop that never moved earns a",
+            "worse one); walk the game move by move and say how strong each move was and what was missed;",
+            "grade both sides; name the turning point; chess content only, nothing about who or what the players are.",
+        ]
+        return "\n".join(lines) + "\n"
 
     def describe(self, move: chess.Move, captured: chess.Piece | None) -> str:
         ply = len(self.moves)
@@ -352,6 +424,7 @@ class Judge:
         self.players = {args.white, args.black}
         self.last_move_post: int | None = None
         self.pending_violation = False  # a STAND DOWN still needs to go out
+        self.search_failed = False  # the last cycle could not read the whole board
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
 
     # -- posting -----------------------------------------------------------
@@ -394,6 +467,10 @@ class Judge:
         log(f"posted {created.get('id')}")
         return True
 
+    def approve_new_game(self, reply_to: int) -> bool:
+        """Post the notice that lets White open a new game. Only a human should trigger this."""
+        return self.post(NEW_GAME_TITLE, NEW_GAME_CONTENT, reply_to)
+
     def stand_down(self, post: dict, reason: str) -> bool:
         """Return True once the violation needs no further action from this judge."""
         log(f"VIOLATION in post {post['id']} by {post['author_id']}: {reason}")
@@ -428,12 +505,19 @@ class Judge:
             except ApiError as e:
                 log(f"search {filt} failed: {e}; skipping this cycle")
                 self.pending_violation = True  # cannot prove the board is clean; keep polling
+                self.search_failed = True
                 return []
         return [posts[i] for i in sorted(posts)]
 
     def handle(self, post: dict) -> bool:
         """Return True if the post is fully dealt with and need not be revisited."""
         author = post["author_id"]
+        is_judge = author == self.args.handle if self.args.handle else author not in self.players
+        if is_judge and post.get("title") == NEW_GAME_TITLE and self.game.over:
+            log(f"post {post['id']}: NEW GAME APPROVED; resetting the board for a new game")
+            self.game = Game(self.args.white, self.args.black)
+            self.last_move_post = None
+            return True
         if author == self.args.handle:
             return True
         if author not in self.players:
@@ -461,10 +545,15 @@ class Judge:
             self.post("ruling" if not ruling.ok else "commentary", ruling.text, mp.post_id)
         if ruling.result:
             log(f"GAME OVER {ruling.result}. Final move list: {' '.join(self.game.moves)}")
+            brief = self.args.state.with_name("recap_brief.md")
+            brief.write_text(self.game.recap_brief())
+            log(f"recap brief written to {brief}; the referee writes the recap from it (see prompts/judge.md)")
+            log(f"no new game may start until a human runs --approve-new-game {mp.post_id}")
         return True
 
     def cycle(self) -> None:
         self.pending_violation = False
+        self.search_failed = False
         for post in self.fetch_all():
             if post["id"] in self.state.handled:
                 continue
@@ -495,6 +584,12 @@ def main() -> int:
     ap.add_argument("--resume", action="store_true", help="a human has cleared a previous STAND DOWN")
     ap.add_argument("--state", type=Path, default=Path(__file__).with_name("state.json"))
     ap.add_argument("--fresh", action="store_true", help="ignore saved state and replay from the start")
+    ap.add_argument(
+        "--approve-new-game",
+        type=int,
+        metavar="POST_ID",
+        help="post NEW GAME APPROVED as a reply to the final move post, then exit (human decision)",
+    )
     args = ap.parse_args()
 
     if not TAG_RE.match(args.tag):
@@ -511,12 +606,22 @@ def main() -> int:
         state.stand_down_post = None
     judge = Judge(args, Board(args.base_url, token), state)
 
+    if args.approve_new_game is not None:
+        judge.cycle()
+        if judge.search_failed or not judge.game.over:
+            log("could not confirm the current game is over; refusing to approve a new one")
+            return 1
+        judge.quiet = False
+        return 0 if judge.approve_new_game(args.approve_new_game) else 1
+
     pid_path = args.state.with_name("watch.pid")
     pid_path.write_text(str(os.getpid()))
     try:
         while True:
             judge.cycle()
-            if args.once or (judge.game.over and not judge.pending_violation):
+            if args.once:
+                return 1 if judge.search_failed else 0
+            if judge.game.over and not judge.pending_violation:
                 return 0
             time.sleep(args.interval)
     except KeyboardInterrupt:
