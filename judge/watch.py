@@ -124,16 +124,25 @@ class Board:
             raise ApiError(f"{method} {path} -> {e.reason}") from None
         return json.loads(raw) if raw else {}
 
-    def search(self, **filt) -> list[dict]:
-        """Follow next_cursor so games longer than one page are still complete."""
+    def search(self, *, max_items: int, after_id: int = 0, **filt) -> list[dict]:
+        """Follow next_cursor so games longer than one page are still complete.
+
+        Results are newest-first, so paging stops as soon as a page reaches
+        `after_id`; only posts with a larger id are returned. `max_items` bounds
+        the memory one search may consume: exceeding it is an error, not a
+        silently truncated history.
+        """
         filt.setdefault("limit", 100)
         items: list[dict] = []
         cursors: set[str] = set()
         while True:
             page = self._request("POST", "/posts/search", filt)
-            items.extend(page["items"])
+            fresh = [p for p in page["items"] if p["id"] > after_id]
+            if len(items) + len(fresh) > max_items:
+                raise ApiError(f"search returned more than {max_items} posts; refusing to load the whole history")
+            items.extend(fresh)
             cursor = page.get("next_cursor")
-            if not cursor or not page["items"]:
+            if not cursor or not page["items"] or len(fresh) < len(page["items"]):
                 return items
             if cursor in cursors:
                 raise ApiError(f"search cursor repeated; history incomplete after {len(items)} posts")
@@ -445,6 +454,7 @@ class Judge:
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
         self.readonly = False  # one-shot commands: never post from a replay whose state is not saved
         self.last_posted_id: int | None = None
+        self.after_id = 0  # highest post id fully processed by this process; later cycles fetch only newer posts
 
     # -- posting -----------------------------------------------------------
 
@@ -552,7 +562,9 @@ class Judge:
             {"author_id_contains": self.args.black},
         ):
             try:
-                for p in self.board.search(show_hidden=True, **filt):
+                for p in self.board.search(
+                    max_items=self.args.max_posts, after_id=self.after_id, show_hidden=True, **filt
+                ):
                     posts[p["id"]] = p
             except ApiError as e:
                 log(f"search {filt} failed: {e}; skipping this cycle")
@@ -610,7 +622,8 @@ class Judge:
     def cycle(self, save: bool = True) -> None:
         self.pending_violation = False
         self.search_failed = False
-        for post in self.fetch_all():
+        posts = self.fetch_all()
+        for post in posts:
             if post["id"] in self.state.handled:
                 continue
             # The game is rebuilt from the board on every start, so posts that were
@@ -621,6 +634,8 @@ class Judge:
                 self.state.handled.add(post["id"])
             else:
                 self.pending_violation = True
+        if posts and not self.pending_violation and not self.search_failed:
+            self.after_id = posts[-1]["id"]
         if save:
             self.state.save(self.args.state)
 
@@ -636,6 +651,12 @@ def main() -> int:
     ap.add_argument("--handle", help="judge handle; signs up if no token is saved")
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
     ap.add_argument("--interval", type=float, default=15.0)
+    ap.add_argument(
+        "--max-posts",
+        type=int,
+        default=2000,
+        help="most posts one search may load per cycle; more than this is treated as a failed read",
+    )
     ap.add_argument("--once", action="store_true", help="one poll cycle, then exit")
     ap.add_argument("--dry-run", action="store_true", help="print posts, send nothing")
     ap.add_argument("--resume", action="store_true", help="a human has cleared a previous STAND DOWN")
