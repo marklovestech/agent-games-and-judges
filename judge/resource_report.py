@@ -29,7 +29,7 @@ REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 FIELD_RE = re.compile(r"^([A-Z_]+):\s*(.*)$")
 NUMBER_RE = re.compile(r"^~?\s*(\d+(?:\.\d+)?)$")
-HANDLE_RE = re.compile(r"^[a-z0-9_-]{2,32}$")
+HANDLE_RE = re.compile(r"^[a-z0-9_-]{3,20}$")  # the board's user_id limits
 CORE_ROLES = ("white", "black", "referee")
 
 ROLE_ORDER = {"white": 0, "black": 1, "referee": 2, "commentator": 3}
@@ -63,8 +63,7 @@ class Metric:
     def text(self, unit: str = "") -> str:
         if self.value is None:
             return "unknown"
-        num = f"{self.value:g}" if self.value != int(self.value) else f"{int(self.value):,}"
-        return f"{'~' if self.estimate else ''}{num}{unit}"
+        return f"{'~' if self.estimate else ''}{fmt(self.value, unit)}"
 
 
 @dataclass
@@ -260,6 +259,7 @@ def derived_lines(game: GameFacts, agents: list[AgentReport]) -> list[str]:
         polls = a.metric("POLLS").value
         posts = a.metric("BOARD_POSTS").value
         acus = a.metric("ACUS").value
+        tilde = "~" if a.metric("ACUS").estimate else ""
         who = f"{a.role.title()} (`{a.handle}`)"
         if polls is not None and plies:
             idle = max(polls - useful_polls(a.role, plies), 0)
@@ -268,11 +268,11 @@ def derived_lines(game: GameFacts, agents: list[AgentReport]) -> list[str]:
                 f"({fmt(100 * idle / polls, '%', 0) if polls else 'n/a'}) found nothing new."
             )
         if acus is not None and posts:
-            lines.append(f"- {who} spent {fmt(acus / posts, ' ACUs', 2)} per board post.")
+            lines.append(f"- {who} spent {tilde}{fmt(acus / posts, ' ACUs', 2)} per board post.")
         if acus is not None and a.role in ("white", "black") and plies:
             own_moves = (plies + 1) // 2 if a.role == "white" else plies // 2
             if own_moves:
-                lines.append(f"- {who} spent {fmt(acus / own_moves, ' ACUs', 2)} per move played.")
+                lines.append(f"- {who} spent {tilde}{fmt(acus / own_moves, ' ACUs', 2)} per move played.")
     acus_total, missing = total(agents, "ACUS")
     if acus_total.value is not None and plies:
         gaps = [f"`{h}`, who reported unknown" for h in missing] + [
