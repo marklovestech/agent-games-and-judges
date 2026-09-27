@@ -137,7 +137,8 @@ posts, API calls, ACUs or tokens if known, retries, human interventions;
 validates each reply as strictly as a move - anything else draws `STAND
 DOWN` - saves it under `judge/replies/`, adds its own row from its counters,
 and writes `reports/<game>-resource-report.md`. With the reference judge this
-is automatic (`--game-name chess_gtm_int-game2` names the report); the
+is automatic (reports are named `<tag>-game<n>`, counting `NEW GAME APPROVED`
+posts; `--game-name` overrides); the
 field definitions are in
 [`prompts/resource_report.md`](prompts/resource_report.md). Humans can add
 what the agents cannot see (ACUs from a dashboard, a commentator row, notes)
