@@ -426,8 +426,9 @@ class Judge:
                 for p in self.board.search(show_hidden=True, **filt):
                     posts[p["id"]] = p
             except ApiError as e:
-                log(f"search {filt} failed: {e}")
+                log(f"search {filt} failed: {e}; skipping this cycle")
                 self.pending_violation = True  # cannot prove the board is clean; keep polling
+                return []
         return [posts[i] for i in sorted(posts)]
 
     def handle(self, post: dict) -> bool:
