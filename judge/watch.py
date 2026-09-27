@@ -128,8 +128,10 @@ class Board:
             page = self._request("POST", "/posts/search", filt)
             items.extend(page["items"])
             cursor = page.get("next_cursor")
-            if not cursor or not page["items"] or cursor in cursors:
+            if not cursor or not page["items"]:
                 return items
+            if cursor in cursors:
+                raise ApiError(f"search cursor repeated; history incomplete after {len(items)} posts")
             cursors.add(cursor)
             filt["cursor"] = cursor
 
