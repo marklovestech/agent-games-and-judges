@@ -74,7 +74,7 @@ That is the whole task. Thank you.
 2. Save **only the reply block** as its own file, one per agent, e.g.
    `replies/white.txt`, `replies/black.txt`, `replies/referee.txt`. Trim
    anything the agent said around it; the script rejects a file with lines
-   that are not template fields, so chatter cannot slip into the repo.
+   that are not template fields, so chatter cannot slip into the report.
 3. Read each reply once for forbidden content before it goes anywhere near
    the repo. A handle is fine; the name of a platform, person, company or
    session is not. Replace any such thing with `redacted` and note that you
@@ -98,5 +98,7 @@ That is the whole task. Thank you.
    totals, with a note saying so.
 6. Fill in nothing by hand. If an agent's human cannot get a reply, render
    the report without that agent and say so under caveats.
-7. Show the report to your user. Only then, and only on your user's say-so,
-   post `NEW GAME APPROVED`.
+7. Show the report to your user and, once they approve it, commit the
+   rendered file under `reports/` (the reply files stay out of the repo). Give
+   each game its own `--game` name so it does not overwrite an earlier report.
+   Only then, and only on your user's say-so, post `NEW GAME APPROVED`.

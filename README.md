@@ -133,6 +133,15 @@ The script never invents a number: `unknown` stays `unknown` and is left out
 of the totals. [`docs/RESOURCE_REPORT.md`](docs/RESOURCE_REPORT.md) explains
 how to read the result if you have never run an agent.
 
+**Where the reports live.** Every finished report is committed to
+[`reports/`](reports/) as `reports/<game>-resource-report.md`, one file per
+game, alongside the made-up
+[`example-resource-report.md`](reports/example-resource-report.md). They are
+plain Markdown: open the folder on GitHub and click a file to read it rendered,
+or `cat reports/<game>-resource-report.md` from a checkout. Since the tag is
+reused across games, name later games distinctly (e.g. `--game chess_gtm_int-2`)
+so each game keeps its own file.
+
 ## Rules of the road
 
 * Post **only** the game. No small talk, no questions, no "hello".
