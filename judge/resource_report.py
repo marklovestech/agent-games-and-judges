@@ -29,6 +29,8 @@ REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 FIELD_RE = re.compile(r"^([A-Z_]+):\s*(.*)$")
 NUMBER_RE = re.compile(r"^~?\s*(\d+(?:\.\d+)?)$")
+HANDLE_RE = re.compile(r"^[a-z0-9_-]{3,20}$")  # the board's user_id limits
+CORE_ROLES = ("white", "black", "referee")
 
 ROLE_ORDER = {"white": 0, "black": 1, "referee": 2, "commentator": 3}
 REQUIRED = ("AGENT", "HANDLE")
@@ -61,8 +63,7 @@ class Metric:
     def text(self, unit: str = "") -> str:
         if self.value is None:
             return "unknown"
-        num = f"{self.value:g}" if self.value != int(self.value) else f"{int(self.value):,}"
-        return f"{'~' if self.estimate else ''}{num}{unit}"
+        return f"{'~' if self.estimate else ''}{fmt(self.value, unit)}"
 
 
 @dataclass
@@ -105,20 +106,32 @@ def build_agent(fields: dict[str, str], source: str) -> AgentReport:
             numbers[key] = parse_metric(fields.get(key, "unknown"))
         except ValueError as e:
             raise ValueError(f"{source}: {key}: {e}") from None
+    handle = fields["HANDLE"].strip()
+    if not HANDLE_RE.match(handle):
+        raise ValueError(f"{source}: HANDLE must be a board handle ({HANDLE_RE.pattern}), got {handle!r}")
     text = {key: fields.get(key, "").strip() for key, _label in TEXT_FIELDS}
     for key, value in text.items():
-        if FORBIDDEN_RE.search(value):
-            raise ValueError(f"{source}: {key} looks like it contains a URL, address, token or session id; redact it")
-    return AgentReport(role, fields["HANDLE"].strip(), numbers, text, source)
+        check_public(value, f"{source}: {key}")
+    return AgentReport(role, handle, numbers, text, source)
+
+
+def check_public(value: str, where: str) -> None:
+    if FORBIDDEN_RE.search(value):
+        raise ValueError(f"{where} looks like it contains a URL, address, token or session id; redact it")
 
 
 def parse_template(text: str, source: str) -> AgentReport:
-    """Parse the KEY: value block from prompts/resource_report.md (code fences and chatter ignored)."""
+    """Parse the KEY: value block from prompts/resource_report.md. Anything else in the file is an error."""
     fields: dict[str, str] = {}
-    for line in text.splitlines():
-        m = FIELD_RE.match(line.strip())
-        if m and (m.group(1) in dict(NUMERIC_FIELDS) or m.group(1) in dict(TEXT_FIELDS) or m.group(1) in REQUIRED):
-            fields[m.group(1)] = m.group(2).strip()
+    known = set(REQUIRED) | dict(NUMERIC_FIELDS).keys() | dict(TEXT_FIELDS).keys()
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("```"):
+            continue
+        m = FIELD_RE.match(line)
+        if not m or m.group(1) not in known:
+            raise ValueError(f"{source}:{n}: not a template field; save only the reply block, nothing said around it")
+        fields[m.group(1)] = m.group(2).strip()
     return build_agent(fields, source)
 
 
@@ -197,13 +210,27 @@ def movelist_from_brief(path: Path) -> tuple[list[str], str | None]:
 # --------------------------------------------------------------------------
 
 
-def total(agents: list[AgentReport], key: str) -> tuple[float | None, list[str]]:
-    """Sum a metric over agents that reported it; return the sum and who did not."""
+def total(agents: list[AgentReport], key: str) -> tuple[Metric, list[str]]:
+    """Sum a metric over agents that reported it; the sum is an estimate if any part was."""
     known = [a.metric(key) for a in agents if a.metric(key).value is not None]
     missing = [a.handle for a in agents if a.metric(key).value is None]
     if not known:
-        return None, missing
-    return sum(m.value for m in known if m.value is not None), missing
+        return Metric(None), missing
+    return Metric(sum(m.value for m in known if m.value is not None), any(m.estimate for m in known)), missing
+
+
+def absent_roles(agents: list[AgentReport]) -> list[str]:
+    roles = {a.role for a in agents}
+    return [r for r in CORE_ROLES if r not in roles]
+
+
+def useful_polls(role: str, plies: int) -> int:
+    """Polls that could have found a new post: one per opponent move for a player, one per ply for a watcher."""
+    if role == "white":
+        return plies // 2
+    if role == "black":
+        return (plies + 1) // 2
+    return plies
 
 
 def fmt(value: float | None, unit: str = "", digits: int = 1) -> str:
@@ -232,26 +259,31 @@ def derived_lines(game: GameFacts, agents: list[AgentReport]) -> list[str]:
         polls = a.metric("POLLS").value
         posts = a.metric("BOARD_POSTS").value
         acus = a.metric("ACUS").value
+        tilde = "~" if a.metric("ACUS").estimate else ""
         who = f"{a.role.title()} (`{a.handle}`)"
         if polls is not None and plies:
-            # A player only needs one poll per opponent move; everything else is waiting.
-            useful = plies if a.role in ("referee", "commentator") else plies // 2 + (1 if a.role == "black" else 0)
-            idle = max(polls - useful, 0)
+            idle = max(polls - useful_polls(a.role, plies), 0)
             lines.append(
                 f"- {who} polled the board {fmt(polls)} times for {plies} plies: about {fmt(idle)} polls "
                 f"({fmt(100 * idle / polls, '%', 0) if polls else 'n/a'}) found nothing new."
             )
         if acus is not None and posts:
-            lines.append(f"- {who} spent {fmt(acus / posts, ' ACUs', 2)} per board post.")
+            lines.append(f"- {who} spent {tilde}{fmt(acus / posts, ' ACUs', 2)} per board post.")
         if acus is not None and a.role in ("white", "black") and plies:
             own_moves = (plies + 1) // 2 if a.role == "white" else plies // 2
             if own_moves:
-                lines.append(f"- {who} spent {fmt(acus / own_moves, ' ACUs', 2)} per move played.")
+                lines.append(f"- {who} spent {tilde}{fmt(acus / own_moves, ' ACUs', 2)} per move played.")
     acus_total, missing = total(agents, "ACUS")
-    if acus_total is not None and plies:
-        note = f" (excluding {', '.join(f'`{h}`' for h in missing)}, who reported unknown)" if missing else ""
+    if acus_total.value is not None and plies:
+        gaps = [f"`{h}`, who reported unknown" for h in missing] + [
+            f"the {r}, who sent no reply" for r in absent_roles(agents)
+        ]
+        scope = "Whole game" if not gaps else "Reporting agents only"
+        note = f" (excluding {'; '.join(gaps)})" if gaps else ""
+        tilde = "~" if acus_total.estimate else ""
         lines.append(
-            f"- Whole game: {fmt(acus_total, ' ACUs', 2)} for {plies} plies, {fmt(acus_total / plies, ' ACUs', 2)} per ply{note}."
+            f"- {scope}: {tilde}{fmt(acus_total.value, ' ACUs', 2)} for {plies} plies, "
+            f"{tilde}{fmt(acus_total.value / plies, ' ACUs', 2)} per ply{note}."
         )
     wall = [a.metric("WALL_CLOCK_MINUTES").value for a in players]
     if players and all(w is not None for w in wall):
@@ -270,10 +302,8 @@ def derived_lines(game: GameFacts, agents: list[AgentReport]) -> list[str]:
 
 def caveats(game: GameFacts, agents: list[AgentReport], extra: list[str]) -> list[str]:
     lines = list(extra)
-    roles = {a.role for a in agents}
-    for role in ("white", "black", "referee"):
-        if role not in roles:
-            lines.append(f"No reply from the {role}; its costs are not in the totals.")
+    for role in absent_roles(agents):
+        lines.append(f"No reply from the {role}; its costs are not in the totals.")
     for key, label in NUMERIC_FIELDS:
         _, missing = total(agents, key)
         if missing and len(missing) < len(agents):
@@ -284,10 +314,11 @@ def caveats(game: GameFacts, agents: list[AgentReport], extra: list[str]) -> lis
     if estimates:
         lines.append(f"Values marked ~ are the agent's own estimates ({', '.join(f'`{h}`' for h in estimates)}).")
     reported_posts, _ = total(agents, "BOARD_POSTS")
-    if game.board_posts is not None and reported_posts is not None and reported_posts != game.board_posts:
+    if game.board_posts is not None and reported_posts.value is not None and reported_posts.value != game.board_posts:
         lines.append(
-            f"Agents report {fmt(reported_posts)} posts between them but the board shows {game.board_posts} under the "
-            "tag; the difference is posts by non-participants, or an agent miscounting."
+            f"Agents report {reported_posts.text()} posts between them but the board shows {game.board_posts} for this "
+            "game; the difference is posts by non-participants, posts from an earlier game under the same tag, or an "
+            "agent miscounting."
         )
     lines.append(
         "Every number comes from the agents' own replies (see prompts/resource_report.md); none were inferred."
@@ -300,10 +331,12 @@ def render(game: GameFacts, agents: list[AgentReport], extra_caveats: list[str])
     totals = []
     for key, label in NUMERIC_FIELDS:
         value, missing = total(agents, key)
-        if value is None:
+        if value.value is None:
             continue
         suffix = f" (from {len(agents) - len(missing)} of {len(agents)} agents)" if missing else ""
-        totals.append(f"| {label} | {fmt(value)}{suffix} |")
+        totals.append(f"| {label} | {value.text()}{suffix} |")
+    if absent_roles(agents):
+        totals.append(f"| Not included | no reply from the {', '.join(absent_roles(agents))} |")
     lines = [
         f"# Game Resource Report: {game.name}",
         "",
@@ -317,7 +350,7 @@ def render(game: GameFacts, agents: list[AgentReport], extra_caveats: list[str])
         f"| Result | {game.result} |",
         f"| Plies (half-moves) | {game.plies} |",
         f"| Full moves | {(game.plies + 1) // 2} |",
-        f"| Posts under the game tag | {game.board_posts if game.board_posts is not None else 'unknown'} |",
+        f"| Posts on the board for this game | {game.board_posts if game.board_posts is not None else 'unknown'} |",
         f"| Final position (FEN) | `{board.fen()}` |",
         f"| Move list | {' '.join(game.moves) or '(none)'} |",
         "",
@@ -424,7 +457,11 @@ def main() -> int:
     ap.add_argument("--movelist", help="full game in SAN, move numbers optional")
     ap.add_argument("--brief", type=Path, help="recap_brief.md written by judge/watch.py (alternative to --movelist)")
     ap.add_argument("--result", help="override the result, e.g. '1-0' or 'draw agreed'")
-    ap.add_argument("--board-posts", type=int, help="number of posts under the game tag, counted from the board")
+    ap.add_argument(
+        "--board-posts",
+        type=int,
+        help="posts on the board for this game only: under the tag, after the previous NEW GAME APPROVED if any",
+    )
     ap.add_argument("--caveat", action="append", default=[], help="extra caveat line (repeatable), e.g. redactions")
     ap.add_argument("--out", type=Path, help="output path; default reports/<game>-resource-report.md")
     ap.add_argument(
@@ -443,6 +480,8 @@ def main() -> int:
         ap.error("--game must be letters, digits, '-' or '_' (it names the output file)")
 
     try:
+        for c in args.caveat:
+            check_public(c, "--caveat")
         agents = load_replies(args.replies)
         if args.brief:
             moves, brief_result = movelist_from_brief(args.brief)

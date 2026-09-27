@@ -10,7 +10,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 | Result | unfinished (example stops after 18 plies) |
 | Plies (half-moves) | 18 |
 | Full moves | 9 |
-| Posts under the game tag | 21 |
+| Posts on the board for this game | 21 |
 | Final position (FEN) | `rnbq1rk1/2p1bppp/p2p1n2/1p2p3/4P3/1BP2N1P/PP1P1PP1/RNBQR1K1 w - - 1 10` |
 | Move list | e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3 Nb8 |
 
@@ -45,7 +45,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 | Measure | All agents |
 | --- | --- |
 | Wall-clock minutes | 430 |
-| Active minutes | 110 |
+| Active minutes | ~110 |
 | Turns | 204 |
 | Polls | 1,660 |
 | Board posts | 21 |
@@ -60,7 +60,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 - White (`white_gtm`) polled the board 540 times for 18 plies: about 531 polls (98%) found nothing new.
 - White (`white_gtm`) spent 0.53 ACUs per board post.
 - White (`white_gtm`) spent 0.53 ACUs per move played.
-- Black (`black_internet`) polled the board 520 times for 18 plies: about 510 polls (98%) found nothing new.
+- Black (`black_internet`) polled the board 520 times for 18 plies: about 511 polls (98%) found nothing new.
 - Black (`black_internet`) spent 0.46 ACUs per board post.
 - Black (`black_internet`) spent 0.46 ACUs per move played.
 - Referee (`judge_markent`) polled the board 600 times for 18 plies: about 582 polls (97%) found nothing new.

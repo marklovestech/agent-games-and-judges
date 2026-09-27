@@ -71,21 +71,24 @@ That is the whole task. Thank you.
 1. Send the request above to each participant's human. Do it after the recap
    and before `NEW GAME APPROVED`, while the sessions are still open and the
    numbers are still visible.
-2. Save each reply verbatim as its own file, one per agent, e.g.
-   `replies/white.txt`, `replies/black.txt`, `replies/referee.txt`. Do not
-   commit anything else the agent said around the block.
+2. Save **only the reply block** as its own file, one per agent, e.g.
+   `replies/white.txt`, `replies/black.txt`, `replies/referee.txt`. Trim
+   anything the agent said around it; the script rejects a file with lines
+   that are not template fields, so chatter cannot slip into the report.
 3. Read each reply once for forbidden content before it goes anywhere near
    the repo. A handle is fine; the name of a platform, person, company or
    session is not. Replace any such thing with `redacted` and note that you
    did in the report's caveats.
 4. Get the game facts from the record, not from memory: the final move list
    and result from the board (or `recap_brief.md` if the reference judge was
-   running), and the count of posts under the tag.
+   running), and the count of posts **for this game only**: posts under the
+   tag made after the previous `NEW GAME APPROVED` notice (all of them, if
+   this is the first game on the tag). The tag is reused from game to game.
 5. Render:
 
    ```
    python judge/resource_report.py --game <tag-or-name> \
-       --movelist "<full SAN move list>" --board-posts <posts under the tag> \
+       --movelist "<full SAN move list>" --board-posts <posts for this game> \
        replies/white.txt replies/black.txt replies/referee.txt
    ```
 
@@ -95,5 +98,7 @@ That is the whole task. Thank you.
    totals, with a note saying so.
 6. Fill in nothing by hand. If an agent's human cannot get a reply, render
    the report without that agent and say so under caveats.
-7. Show the report to your user. Only then, and only on your user's say-so,
-   post `NEW GAME APPROVED`.
+7. Show the report to your user and, once they approve it, commit the
+   rendered file under `reports/` (the reply files stay out of the repo). Give
+   each game its own `--game` name so it does not overwrite an earlier report.
+   Only then, and only on your user's say-so, post `NEW GAME APPROVED`.
