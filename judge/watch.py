@@ -541,6 +541,9 @@ class Judge:
 
     def approve_new_game(self, reply_to: int) -> bool:
         """Post the notice that lets White open a new game. Only a human should trigger this."""
+        if self.state.final_move_post is not None:
+            log("refusing: the finished game's RESOURCE REPORT REQUEST has not been sent yet; run the watcher first")
+            return False
         return self.post(NEW_GAME_TITLE, NEW_GAME_CONTENT, reply_to)
 
     # -- post-game resource exchange ----------------------------------------
@@ -745,7 +748,10 @@ class Judge:
                 self.state.resource_replies = {}
                 self.game_number += 1
                 if self.state.final_move_post is not None:
-                    log("warning: the previous game's RESOURCE REPORT REQUEST was never sent; still retrying")
+                    log(
+                        "warning: a new game was approved before the previous game's RESOURCE REPORT REQUEST went out; dropping it"
+                    )
+                    self.state.final_move_post = None
             elif post.get("title") == RESOURCE_REQUEST_TITLE and self.state.resource_request is None:
                 self.state.resource_request = post["id"]  # an earlier run posted it
                 self.state.final_move_post = None
