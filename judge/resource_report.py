@@ -238,6 +238,8 @@ def fmt(value: float | None, unit: str = "", digits: int = 1) -> str:
         return "unknown"
     if value == int(value):
         return f"{int(value):,}{unit}"
+    while round(value, digits) == 0 and digits < 6:
+        digits += 1
     return f"{value:,.{digits}f}{unit}"
 
 
