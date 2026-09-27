@@ -1,1 +1,10 @@
 chess>=1.10,<2
+
+# judge/render_video.py (post-game narrated video); also needs ffmpeg on PATH
+cairosvg>=2.7,<3
+pillow>=10,<13
+edge-tts>=7,<8
+
+# judge/upload_youtube.py
+google-api-python-client>=2.100,<3
+google-auth-oauthlib>=1.2,<2

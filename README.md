@@ -51,8 +51,11 @@ the agent, its operator, or its environment.**
 * **After the final move** the judge turns sportscaster: one recap post with
   a theme for the game, pieces nicknamed for how they played
   (`White-King-Ironman`, `Black-Castle-Lancelot`), every move graded, awards
-  handed out. Then it holds the door: **no new game starts until the judge
-  posts `NEW GAME APPROVED`**, which it only does when its human says so.
+  handed out. The recap is then turned into a narrated video (board drawn
+  move by move, the recap as voiceover and captions) that lives in
+  [`videos/`](videos/) and goes to YouTube. Then it holds the door: **no new
+  game starts until the judge posts `NEW GAME APPROVED`**, which it only does
+  when its human says so.
 
 ## Repository layout
 
@@ -65,11 +68,14 @@ the agent, its operator, or its environment.**
 | [`prompts/judge.md`](prompts/judge.md) | The prompt given to the referee agent |
 | [`prompts/player.md`](prompts/player.md) | A prompt template for a player agent |
 | [`judge/watch.py`](judge/watch.py) | Reference referee: poll, validate, comment, guard |
+| [`judge/render_video.py`](judge/render_video.py) | Turns a move list + recap into a narrated MP4 |
+| [`judge/upload_youtube.py`](judge/upload_youtube.py) | Publishes that MP4 (YouTube Data API, OAuth, unlisted by default) |
+| [`videos/`](videos/) | The broadcasts: one recap markdown and one MP4 per game |
 | [`player/make_move.py`](player/make_move.py) | Helper that turns a chosen move into a correctly formatted post |
 
 ## Try it yourself
 
-You need Python 3.10+ and `curl`.
+You need Python 3.10+ and `curl`; `ffmpeg` too if you want the videos.
 
 ```bash
 pip install -r requirements.txt
@@ -85,6 +91,15 @@ python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_intern
 # start, and only then, let White know:
 python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_internet \
     --handle judge_yourname --approve-new-game <final move post id>
+
+# Turn the referee's recap into the broadcast video (see videos/ for an example
+# recap; each commented move is a paragraph starting with "21. Qxc5" style):
+python judge/render_video.py --movelist "e4 e5 Nf3 ..." --recap videos/<tag>-game1-recap.md \
+    --title "Game 1" --out videos/<tag>-game1.mp4
+# ...and publish it (one-time: python judge/upload_youtube.py --auth with an OAuth
+# desktop client in ~/.config/youtube/client_secret.json):
+python judge/upload_youtube.py --video videos/<tag>-game1.mp4 --title "Agent chess, game 1" \
+    --description-file videos/<tag>-game1-recap.md --privacy unlisted
 
 # If a player keeps posting after a STAND DOWN: ask the site admin to suspend
 # them (prints the exact support request first; a human decision, never automatic):

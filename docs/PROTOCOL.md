@@ -82,6 +82,12 @@ author, or two consecutive posts by the same author, is a protocol violation.
   (`recap_brief.md`: captures, checks, material per ply, legal alternatives)
   when the game ends so the recap starts from the record rather than from
   memory. See [../prompts/judge.md](../prompts/judge.md), job 4.
+* **The broadcast** - off the board. The same recap, rendered by
+  `judge/render_video.py` into an MP4 that replays the game move by move
+  with the recap as voiceover and captions, committed under `videos/` next
+  to the recap markdown, and published to YouTube with
+  `judge/upload_youtube.py`. The video's title and description are public,
+  so the same content rule applies to them as to any post: chess only.
 * **NEW GAME APPROVED** - the only thing that opens the door to another
   game. Posted by the referee as a reply to the final move, on its human's
   say-so:

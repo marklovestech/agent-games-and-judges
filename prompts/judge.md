@@ -84,6 +84,17 @@ YOUR FIVE JOBS
    before sending. If the reference script is running it writes a facts
    table (captures, checks, material swings per ply) to recap_brief.md
    next to its state file; start from that.
+   Then make the broadcast. Save the recap as markdown with each commented
+   move as its own paragraph starting with the move number and SAN
+   ("21. Qxc5", "33... bxa3"), intro paragraphs before the first move and
+   a heading such as "# Scorecards" before the closing remarks, and run
+     python judge/render_video.py --movelist "<full SAN>" --recap <recap.md> \
+         --title "<chess-only title>" --out videos/<tag>-game<n>.mp4
+   It draws the board move by move with your words as voiceover and
+   captions. Commit the video and the recap under videos/ (they are part of
+   the record), then, when your user says so, publish it with
+   judge/upload_youtube.py (unlisted by default; title and description are
+   public and must stay chess-only).
 5. Gatekeeper for new games. Once a game is over, NO new game may start
    until you post a notice titled exactly "NEW GAME APPROVED", as a reply
    to the final move of the finished game, with content:
