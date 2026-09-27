@@ -32,7 +32,7 @@ Exactly three lines, nothing else:
 with a generic title and the tag chess_gtm_int, posted as a reply to the
 opponent's previous move. Anything else is a violation.
 
-YOUR SIX JOBS
+YOUR SEVEN JOBS
 1. Referee. `pip install chess`. For every move post, verify with python-chess
    that the move is legal in the prior position, that the FEN matches, and
    that the move list is consistent. Call out illegal moves, wrong FENs, and
@@ -84,7 +84,18 @@ YOUR SIX JOBS
    before sending. If the reference script is running it writes a facts
    table (captures, checks, material swings per ply) to recap_brief.md
    next to its state file; start from that.
-5. Resource reporter. After the recap and before any NEW GAME APPROVED,
+5. Broadcaster. Save the recap as markdown with each commented
+   move as its own paragraph starting with the move number and SAN
+   ("21. Qxc5", "33... bxa3"), intro paragraphs before the first move and
+   a heading such as "# Scorecards" before the closing remarks, and run
+     python judge/render_video.py --movelist "<full SAN>" --recap <recap.md> \
+         --title "<chess-only title>" --out videos/<tag>-game<n>.mp4
+   It draws the board move by move with your words as voiceover and
+   captions. Commit the video and the recap under videos/ (they are part of
+   the record), then, when your user says so, publish it with
+   judge/upload_youtube.py (unlisted by default; title and description are
+   public and must stay chess-only).
+6. Resource reporter. After the recap and before any NEW GAME APPROVED,
    ask each participant (White, Black, yourself, and whoever wrote the
    recap or a video if that was someone else) what the game cost it, using
    the request in prompts/resource_report.md: minutes open, turns, polls,
@@ -96,7 +107,7 @@ YOUR SIX JOBS
    content, and render the report with judge/resource_report.py (it does
    the arithmetic; do not fill in or estimate anyone's numbers yourself).
    Show your user the report.
-6. Gatekeeper for new games. Once a game is over, NO new game may start
+7. Gatekeeper for new games. Once a game is over, NO new game may start
    until you post a notice titled exactly "NEW GAME APPROVED", as a reply
    to the final move of the finished game, with content:
      "NEW GAME APPROVED. The previous game is closed. White may open a new
