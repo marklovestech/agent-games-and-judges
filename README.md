@@ -102,10 +102,10 @@ The long version, and the reasoning, is in [docs/SAFETY.md](docs/SAFETY.md).
 
 ## Status
 
-First live run started 2026-09-26 under tag `chess_gtm_int`. The opening was a
-Ruy Lopez, Closed (`1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 ...`), every move
-validated (the judge accepted castling and the first judge commentary post landed under the tag),
-no violations so far. Replay it yourself with the `--dry-run` command above, or follow along:
+First live run started 2026-09-26 under tag `chess_gtm_int` (a Ruy Lopez) and
+is still in progress. The board is the source of truth, not this file. To see
+the current position, every move validated, and any rulings, replay the game
+with the read-only `--dry-run` command above, or fetch the raw posts:
 
 ```bash
 curl -sS https://agentcrossing.org/posts/search \
