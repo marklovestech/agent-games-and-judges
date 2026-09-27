@@ -29,34 +29,34 @@ request asking for a reputation grant when both players ran dry.
 
 | Measure | Build agent | Report-writer (child) |
 | --- | --- | --- |
-| Wall-clock minutes | ~115 for the game-1 work (first commit 16:52 to the last merge at 18:41 local time); the compute figures below also cover the later protocol, hardening and PRD work | ~15 |
+| Wall-clock minutes | ~115 for the game-1 work (first commit 16:52 to the last merge at 18:41 local time); the compute figures below are final and also cover the later protocol, security-scan fixes, hardening, PRD, cost estimates and version history | ~15 |
 | Active minutes | unknown | unknown |
 | Turns | unknown (not exposed; several hundred tool calls) | unknown |
-| Human messages received | 31 | 1 (the kickoff prompt) |
-| Pull requests opened | 20 | 3 (all merged) |
+| Human messages received | 36 | 1 (the kickoff prompt) |
+| Pull requests opened | 26 (21 by hand, 5 generated from security-scan findings; all merged) | 3 (all merged) |
 | Board posts | 0 | 0 |
 | Board API calls | ~30 (read-only history fetches for dry runs, one signup, one support request, one `/me`) | 0 |
-| ACUs | 64.06 | 8.02 |
-| Estimated cost at $2.50/ACU | $160.15 | $20.05 |
+| ACUs | 81.61 | 8.02 |
+| Estimated cost at $2.50/ACU | $204.03 | $20.05 |
 | Tokens | unknown | unknown |
 | Tools installed | python-chess, cairosvg, pillow, edge-tts, ffmpeg, ruff, google-api-python-client | none beyond Python |
 | Retries | ~3 (a failed `espeak` smoke test, a failed message to another session, a movelist typo in a smoke test) | unknown |
 | Human interventions | ~12 (see below) | 0 |
-| Automated review rounds answered | ~15 (roughly 35 findings fixed, 4 answered and left as designed) | 3 |
+| Automated review rounds answered | ~20 (roughly 50 findings fixed, 5 answered and left as designed or for a human) | 3 |
 
 ## Totals
 
 | Measure | Build (both agents) | Game (four agents) | Everything |
 | --- | --- | --- | --- |
-| ACUs | 72.08 | 51.27 (commentator unknown) | ~123.4 |
-| Estimated cost at $2.50/ACU | $180.20 | $128.18 | ~$308 |
+| ACUs | 89.63 | 51.27 (commentator unknown) | ~140.9 |
+| Estimated cost at $2.50/ACU | $224.08 | $128.18 | ~$352 |
 | Wall-clock minutes | ~115 | ~256 across three agents; ~110 on the clock | about two hours side by side |
-| Pull requests | 23 | 0 | 23 |
+| Pull requests | 29 | 0 | 29 |
 | Board posts | 0 | 143 | 145 including a bystander's two |
 
 So the tooling that made the game watchable, reproducible and documented
-cost about 1.4 times the game itself: roughly $180 of scaffolding for a $128
-game, about $308 all in. That is the single most useful thing in this
+cost about 1.75 times the game itself: roughly $224 of scaffolding for a $128
+game, about $352 all in. That is the single most useful thing in this
 report: for a first experiment, expect to spend at least as much on the
 scaffolding as on the experiment.
 
@@ -91,10 +91,11 @@ agent did the typing, the human did the choosing.
 
 ## What that works out to
 
-- 72.08 ACUs, about $180, bought roughly 2,000 lines of Python, 2,000 lines
+- 89.63 ACUs, about $224, bought roughly 2,000 lines of Python, 2,500 lines
   of Markdown (prompts, protocol, safety model, lessons, version history,
   PRD, this report), one 14-minute narrated video, a board-based protocol
-  for the agents to report their own costs, and 23 pull requests.
+  for the agents to report their own costs, a security scan with its
+  findings fixed, and 29 pull requests.
 - About 3.1 ACUs, or $8, per pull request, review rounds included.
 - The child session cost 8.02 ACUs for a self-contained feature (template,
   renderer, reader's guide, three review rounds). Handing a well-bounded job

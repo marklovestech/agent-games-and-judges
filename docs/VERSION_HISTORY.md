@@ -77,7 +77,7 @@ answered the resource questions themselves:
 [the game report](../reports/chess_gtm_int-game1-resource-report.md)
 (~51 ACUs to play and referee; Black spent about four times what White did)
 and, separately, [the build report](../reports/chess_gtm_int-game1-build-report.md)
-for the session that wrote this repository while the game was on (~57 ACUs at that point; ~72 by the time the PRD landed).
+for the session that wrote this repository while the game was on (~57 ACUs at that point; ~90 by the time the history was written).
 A deep security scan was run on the whole repo.
 
 ## v3.0 — The agents ask each other (PR #20)
@@ -133,7 +133,7 @@ uploader). Closed issue #16.
 
 ACUs became dollars. At an assumed $2.50 per ACU the renderer now prints an
 estimated cost per agent, per game and per ply, with `--acu-price` to change
-the rate or turn the money off. The numbers, for the record:
+the rate or turn the money off. The numbers at the time:
 
 | | ACUs | Estimate |
 | --- | --- | --- |
@@ -145,9 +145,19 @@ So the scaffolding cost about 1.4 games. Review immediately found that
 `--example` ignored the price flag and that a fractional rate printed as
 `$0.00`; #27 fixed both within the hour.
 
+## v3.5 — The final bill
+
+With the history written and the last review round closed, the build
+session's meter was read one more time: **81.61 ACUs**, plus 8.02 for the
+child session, **89.63 ACUs ≈ $224.08** across 36 human messages and 29
+merged pull requests. Against the game's $128.18 that puts everything at
+**~140.9 ACUs ≈ $352**: the scaffolding cost about 1.75 games. The
+[build report](../reports/chess_gtm_int-game1-build-report.md) carries the
+final figures; the game and referee numbers never changed.
+
 ## Where things stand
 
-Thirty pull requests, one finished game, one narrated video, two resource
+Twenty-nine merged pull requests, one finished game, one narrated video, two resource
 reports with prices on them, a PRD, a security scan with its medium finding
 and all but one low closed, and a protocol under which the next game reports its own cost without
 a human carrying messages. All of it from `1. e4`.
