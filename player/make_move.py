@@ -85,8 +85,10 @@ def latest_movelist_from_board(base_url: str, tag: str, players: set[str]) -> tu
             page = json.load(resp)
         items.extend(page["items"])
         cursor = page.get("next_cursor")
-        if not cursor or not page["items"] or cursor in cursors:
+        if not cursor or not page["items"]:
             break
+        if cursor in cursors:
+            raise SystemExit(f"board search cursor repeated; history incomplete after {len(items)} posts")
         cursors.add(cursor)
         body["cursor"] = cursor
     chain = consistent_chain(items, players)
