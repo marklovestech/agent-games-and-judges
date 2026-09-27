@@ -218,7 +218,7 @@ def duration(path: Path) -> float:
 def clip(image: Path, audio: Path | None, seconds: float, out: Path) -> None:
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-framerate", "24", "-i", str(image)]
     if audio:
-        cmd += ["-i", str(audio)]
+        cmd += ["-i", str(audio), "-af", "apad"]
     else:
         cmd += ["-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono"]
     cmd += [
@@ -238,7 +238,6 @@ def clip(image: Path, audio: Path | None, seconds: float, out: Path) -> None:
         "1",
         "-b:a",
         "96k",
-        "-shortest",
         str(out),
     ]
     subprocess.run(cmd, check=True)
@@ -246,7 +245,9 @@ def clip(image: Path, audio: Path | None, seconds: float, out: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--movelist", required=True, help="full game in SAN from move 1, space separated")
+    ap.add_argument(
+        "--movelist", required=True, help="full game in SAN from move 1, space separated; move numbers optional"
+    )
     ap.add_argument("--recap", type=Path, required=True, help="the referee's recap (markdown)")
     ap.add_argument("--title", default="Chess game", help="shown on every frame; keep it chess-only")
     ap.add_argument("--out", type=Path, required=True, help="output .mp4")
@@ -257,7 +258,7 @@ def main() -> int:
 
     if not shutil.which("ffmpeg"):
         raise SystemExit("ffmpeg not found on PATH")
-    moves = args.movelist.split()
+    moves = [t for t in args.movelist.split() if not re.fullmatch(r"\d+\.(\.\.)?", t)]
     board = chess.Board()
     positions: list[tuple[chess.Board, chess.Move | None]] = [(board.copy(), None)]
     for san in moves:

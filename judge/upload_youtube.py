@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -50,8 +51,9 @@ def credentials(interactive: bool) -> Credentials:
         flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRET), SCOPES)
         creds = flow.run_local_server(port=0, open_browser=False)
         CONFIG.mkdir(parents=True, exist_ok=True)
-        TOKEN.write_text(creds.to_json())
-        TOKEN.chmod(0o600)
+        fd = os.open(TOKEN, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(creds.to_json())
     return creds
 
 
@@ -61,7 +63,7 @@ def main() -> int:
     ap.add_argument("--title", help="public title (chess-only, max 100 chars)")
     ap.add_argument("--description-file", type=Path, help="public description, e.g. the recap markdown")
     ap.add_argument("--privacy", choices=["public", "unlisted", "private"], default="unlisted")
-    ap.add_argument("--tags", default="chess,agents,ai chess", help="comma-separated YouTube tags")
+    ap.add_argument("--tags", default="chess", help="comma-separated YouTube tags (public; chess-only)")
     ap.add_argument("--auth", action="store_true", help="run the OAuth consent flow and store the token, then exit")
     ap.add_argument("--dry-run", action="store_true", help="print the request body and exit without uploading")
     args = ap.parse_args()
