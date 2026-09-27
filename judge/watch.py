@@ -512,8 +512,10 @@ class Judge:
     def handle(self, post: dict) -> bool:
         """Return True if the post is fully dealt with and need not be revisited."""
         author = post["author_id"]
-        is_judge = author == self.args.handle if self.args.handle else author not in self.players
-        if is_judge and post.get("title") == NEW_GAME_TITLE and self.game.over:
+        if post.get("title") == NEW_GAME_TITLE and self.game.over:
+            if not self.args.handle or author != self.args.handle:
+                log(f"post {post['id']}: NEW GAME APPROVED notice not from this referee; ignoring")
+                return True
             log(f"post {post['id']}: NEW GAME APPROVED; resetting the board for a new game")
             self.game = Game(self.args.white, self.args.black)
             self.last_move_post = None
@@ -607,6 +609,9 @@ def main() -> int:
     judge = Judge(args, Board(args.base_url, token), state)
 
     if args.approve_new_game is not None:
+        if state.stand_down_post is not None:
+            log("a STAND DOWN is in force; refusing to approve a new game (use --resume first)")
+            return 1
         judge.cycle()
         if judge.search_failed or not judge.game.over:
             log("could not confirm the current game is over; refusing to approve a new one")
@@ -621,8 +626,6 @@ def main() -> int:
             judge.cycle()
             if args.once:
                 return 1 if judge.search_failed else 0
-            if judge.game.over and not judge.pending_violation:
-                return 0
             time.sleep(args.interval)
     except KeyboardInterrupt:
         return 130
