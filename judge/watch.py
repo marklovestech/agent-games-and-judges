@@ -68,7 +68,10 @@ RESOURCE_REQUEST_CONTENT = (
     f"'{RESOURCE_REPLY_TITLE}', content exactly these lines, one per field, values a number, ~estimate or unknown; "
     "TOOLS_INSTALLED a comma-separated list of tool names or none. No other text.\n" + "\n".join(RESOURCE_BOARD_FIELDS)
 )
-TOOLS_RE = re.compile(r"^(none|[a-z0-9][a-z0-9 ._+-]{0,30}(,\s*[a-z0-9][a-z0-9 ._+-]{0,30})*)$", re.IGNORECASE)
+# Tool names as they appear in a package manager: one lowercase token each, no spaces, at most six.
+TOOL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._+-]{0,24}$")
+MAX_TOOLS = 6
+GAME_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 STAND_DOWN_TITLE = "STAND DOWN"
 STAND_DOWN_CONTENT = (
     "STAND DOWN. Non-permitted content detected in post {post_id}. All "
@@ -455,6 +458,7 @@ class State:
     resource_replies: dict[str, int] = field(default_factory=dict)  # player -> id of its accepted RESOURCE REPORT
     started: float = field(default_factory=time.time)  # first start of this watcher, for its own wall clock
     polls: int = 0
+    final_move_post: int | None = None  # a finished game whose RESOURCE REPORT REQUEST is still unsent
 
     @classmethod
     def load(cls, path: Path) -> State:
@@ -471,6 +475,7 @@ class State:
             resource_replies=raw.get("resource_replies", {}),
             started=raw.get("started", time.time()),
             polls=raw.get("polls", 0),
+            final_move_post=raw.get("final_move_post"),
         )
 
     def save(self, path: Path) -> None:
@@ -486,6 +491,7 @@ class State:
                     "resource_replies": self.resource_replies,
                     "started": self.started,
                     "polls": self.polls,
+                    "final_move_post": self.final_move_post,
                 },
                 indent=1,
             )
@@ -505,6 +511,8 @@ class Judge:
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
         self.readonly = False  # one-shot commands: never post from a replay whose state is not saved
         self.last_posted_id: int | None = None
+        self.game_number = 1  # 1 + NEW GAME APPROVED posts seen; rebuilt from the board like the game itself
+        self.dry_requested = False  # dry-run printed the request; nothing is persisted about it
         self.after_id = 0  # every post up to this id has been fetched and handled by this process
         self.watermark = 0  # newest board post id read before this cycle's searches began
         self.noted_id = 0  # non-player posts up to this id have already been logged
@@ -552,6 +560,9 @@ class Judge:
 
     def approve_new_game(self, reply_to: int) -> bool:
         """Post the notice that lets White open a new game. Only a human should trigger this."""
+        if self.state.final_move_post is not None:
+            log("refusing: the finished game's RESOURCE REPORT REQUEST has not been sent yet; run the watcher first")
+            return False
         return self.post(NEW_GAME_TITLE, NEW_GAME_CONTENT, reply_to)
 
     # -- post-game resource exchange ----------------------------------------
@@ -560,16 +571,27 @@ class Judge:
         return self.args.state.with_name("replies")
 
     def game_name(self) -> str:
-        return self.args.game_name or self.args.tag
+        return self.args.game_name or f"{self.args.tag}-game{self.game_number}"
 
-    def request_resources(self, final_move_post: int) -> None:
-        """Ask both players, on the board, what the game cost them. One post, right after the final move."""
-        if self.state.resource_request is not None:
+    def request_resources(self) -> None:
+        """Ask both players, on the board, what the game cost them. One post, right after the final move.
+
+        Retried every cycle until it goes out; a request is only owed for a game whose final move
+        this watcher saw live, never for one it merely replayed."""
+        if self.state.final_move_post is None or self.state.resource_request is not None:
             return
-        if self.post(RESOURCE_REQUEST_TITLE, RESOURCE_REQUEST_CONTENT, final_move_post):
-            self.state.resource_request = self.last_posted_id  # None in dry-run
+        if self.post(RESOURCE_REQUEST_TITLE, RESOURCE_REQUEST_CONTENT, self.state.final_move_post):
+            self.state.resource_request = self.last_posted_id
+            self.state.final_move_post = None
             self.state.resource_replies = {}
             log("RESOURCE REPORT REQUEST posted; waiting for one RESOURCE REPORT reply per player")
+        else:
+            log("RESOURCE REPORT REQUEST not posted; will retry next cycle")
+
+    def replies_to_request(self, post: dict) -> bool:
+        if self.state.resource_request is not None:
+            return self.state.resource_request in post.get("reply_to_post_ids", [])
+        return self.dry_requested
 
     def parse_resource_reply(self, post: dict) -> tuple[resource_report.AgentReport | None, str]:
         """Strictly validate a player's RESOURCE REPORT post. Returns (report, reason-if-rejected)."""
@@ -583,13 +605,18 @@ class Judge:
             m = resource_report.FIELD_RE.match(line)
             if not m or m.group(1) not in RESOURCE_BOARD_FIELDS:
                 return None, f"line is not one of the permitted RESOURCE REPORT fields: {line[:40]!r}"
+            if m.group(1) in fields:
+                return None, f"field repeated: {m.group(1)}"
             fields[m.group(1)] = m.group(2).strip()
+        missing = [f for f in RESOURCE_BOARD_FIELDS if f not in fields]
+        if missing:
+            return None, f"missing fields: {', '.join(missing)}"
         expected_role = "white" if author == self.args.white else "black"
         if fields.get("AGENT", "").lower() != expected_role or fields.get("HANDLE") != author:
             return None, f"AGENT/HANDLE must be {expected_role}/{author}"
-        tools = fields.get("TOOLS_INSTALLED", "none")
-        if not TOOLS_RE.match(tools):
-            return None, "TOOLS_INSTALLED must be a short comma-separated list of tool names or none"
+        tools = [t.strip() for t in fields["TOOLS_INSTALLED"].split(",")]
+        if tools != ["none"] and (len(tools) > MAX_TOOLS or not all(TOOL_NAME_RE.match(t) for t in tools)):
+            return None, f"TOOLS_INSTALLED must be none or up to {MAX_TOOLS} package-style names, comma-separated"
         try:
             report = resource_report.build_agent(fields, f"post {post['id']}")
         except ValueError as e:
@@ -601,6 +628,8 @@ class Judge:
         if author in self.state.resource_replies:
             log(f"note: post {post['id']}: second RESOURCE REPORT from {author}; keeping the first, ignoring this one")
             return True
+        if not self.replies_to_request(post):
+            return self.stand_down(post, "RESOURCE REPORT that is not a reply to the referee's RESOURCE REPORT REQUEST")
         report, reason = self.parse_resource_reply(post)
         if report is None:
             return self.stand_down(post, f"malformed RESOURCE REPORT: {reason}")
@@ -751,10 +780,27 @@ class Judge:
                 log(f"post {post['id']}: NEW GAME APPROVED; resetting the board for a new game")
                 self.game = Game(self.args.white, self.args.black)
                 self.last_move_post = None
-                self.state.resource_request = None
-                self.state.resource_replies = {}
-            elif post.get("title") == RESOURCE_REQUEST_TITLE and self.state.resource_request is None:
+                self.game_number += 1
+                # Replayed approvals must not touch a later game's exchange: only state older than
+                # this notice belongs to the game it closed.
+                if self.state.resource_request is not None and self.state.resource_request < post["id"]:
+                    self.state.resource_request = None
+                    self.state.resource_replies = {}
+                if self.state.final_move_post is not None and self.state.final_move_post < post["id"]:
+                    log(
+                        "warning: a new game was approved before the previous game's RESOURCE REPORT REQUEST went out; dropping it"
+                    )
+                    self.state.final_move_post = None
+            elif (
+                post.get("title") == RESOURCE_REQUEST_TITLE
+                and self.state.resource_request is None
+                and (
+                    self.state.final_move_post is None
+                    or self.state.final_move_post in post.get("reply_to_post_ids", [])
+                )
+            ):
                 self.state.resource_request = post["id"]  # an earlier run posted it
+                self.state.final_move_post = None
             return True
         if author not in self.players:
             if not self.quiet and post["id"] > self.noted_id:
@@ -800,7 +846,11 @@ class Judge:
             brief = self.args.state.with_name("recap_brief.md")
             brief.write_text(self.game.recap_brief())
             log(f"recap brief written to {brief}; the referee writes the recap from it (see prompts/judge.md)")
-            self.request_resources(mp.post_id)
+            if self.args.dry_run:  # print it, persist nothing: a real watcher must not inherit a dry run's debt
+                self.dry_requested = self.post(RESOURCE_REQUEST_TITLE, RESOURCE_REQUEST_CONTENT, mp.post_id)
+            elif not self.quiet:
+                self.state.final_move_post = mp.post_id
+            self.request_resources()
             log(f"no new game may start until a human runs --approve-new-game {mp.post_id}")
         return True
 
@@ -835,7 +885,10 @@ class Judge:
                 # no longer tracked (e.g. non-player posts recorded by older versions).
                 self.state.seen &= self.state.handled
             self.after_id = max(self.after_id, self.watermark)
-        if save:
+            if self.state.stand_down_post is None:
+                self.quiet = False
+                self.request_resources()
+        if save and not self.args.dry_run:  # a dry run leaves no trace a live watcher could inherit
             self.state.save(self.args.state)
 
 
@@ -849,7 +902,8 @@ def main() -> int:
     ap.add_argument("--black", required=True)
     ap.add_argument("--handle", help="judge handle; signs up if no token is saved")
     ap.add_argument(
-        "--game-name", help="name for reports/<name>-resource-report.md, e.g. chess_gtm_int-game2 (default: tag)"
+        "--game-name",
+        help="name for reports/<name>-resource-report.md (default: <tag>-game<n>, n counted from NEW GAME APPROVED posts)",
     )
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
     ap.add_argument("--interval", type=float, default=15.0)
@@ -876,6 +930,8 @@ def main() -> int:
         help="after a STAND DOWN, ask the site admin to suspend players who kept posting, then exit (human decision)",
     )
     args = ap.parse_args()
+    if args.game_name and not GAME_NAME_RE.match(args.game_name):
+        ap.error("--game-name must be lowercase letters, digits, _ or - (at most 40 characters)")
 
     if not TAG_RE.match(args.tag):
         ap.error(f"tag {args.tag!r} must match {TAG_RE.pattern} (the API rejects anything else)")

@@ -105,10 +105,12 @@ author, or two consecutive posts by the same author, is a protocol violation.
   lines from [../prompts/resource_report.md](../prompts/resource_report.md)
   (`AGENT` through `POSTS_IN_RESERVE`; **no `NOTES` line on the board**).
   Values are a number, a `~`-prefixed estimate, or `unknown`;
-  `TOOLS_INSTALLED` is a short comma-separated list of tool names or `none`.
-  The referee validates a reply as strictly as a move: any other line, a
-  wrong `AGENT`/`HANDLE`, or free text is a violation and draws `STAND
-  DOWN`. A second reply from the same player is ignored. A `RESOURCE REPORT`
+  `TOOLS_INSTALLED` is `none` or up to six package-style names
+  (`python-chess, curl`; lowercase, no spaces). All fourteen lines are
+  required. The referee validates a reply as strictly as a move: a missing
+  or extra line, a wrong `AGENT`/`HANDLE`, free text, or a `RESOURCE REPORT`
+  that is not a reply to the referee's request is a violation and draws
+  `STAND DOWN`. A second reply from the same player is ignored. A `RESOURCE REPORT`
   posted before the game is over is a violation. Once both players have
   answered, the reference judge adds its own row from its counters and
   renders `reports/<game>-resource-report.md` with `judge/resource_report.py`.
