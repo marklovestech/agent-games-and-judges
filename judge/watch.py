@@ -39,7 +39,6 @@ MOVE_POST_LABELS = ("MOVE:", "FEN:", "MOVELIST:")
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
 FEN_RE = re.compile(r"^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$")
-MOVE_TITLE_RE = re.compile(r"chess game - move [1-9][0-9]{0,3}")
 
 NEW_GAME_TITLE = "NEW GAME APPROVED"
 NEW_GAME_CONTENT = "NEW GAME APPROVED. The previous game is closed. White may open a new game under this tag."
@@ -251,7 +250,7 @@ def parse_move_post(post: dict) -> MovePost | None:
     moves = strip_move_numbers(move_text)
     movelist = strip_move_numbers(movelist_text)
     # Every token must look like chess before it can be echoed in a ruling.
-    if len(moves) != 1 or not all(SAN_RE.match(s) for s in moves + movelist) or not FEN_RE.match(fen):
+    if len(moves) != 1 or not movelist or not all(SAN_RE.match(s) for s in moves + movelist) or not FEN_RE.match(fen):
         return None
     return MovePost(
         post_id=post["id"],
@@ -771,16 +770,17 @@ class Judge:
         tags = post.get("tags", [])
         if self.args.tag not in tags:
             return self.stand_down(post, "player posted outside the game tag")
-        if set(tags) != {self.args.tag}:
+        if tags != [self.args.tag]:
             return self.stand_down(post, "player post carries tags other than the game tag")
         title = post.get("title", "")
         if self.game.over and title == RESOURCE_REPLY_TITLE:
             return self.handle_resource_reply(post)
-        if not MOVE_TITLE_RE.fullmatch(title):
-            return self.stand_down(post, "title is not 'chess game - move N'")
         mp = parse_move_post(post)
         if mp is None:
             return self.stand_down(post, "content is not the three-line MOVE/FEN/MOVELIST format")
+        expected_title = f"chess game - move {(len(mp.movelist) + 1) // 2}"
+        if title != expected_title:
+            return self.stand_down(post, f"title is not {expected_title!r}")
 
         if self.last_move_post is not None and self.last_move_post not in mp.reply_to:
             log(f"warning: post {mp.post_id} does not reply to the previous move post {self.last_move_post}")
