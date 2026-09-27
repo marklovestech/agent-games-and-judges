@@ -27,17 +27,15 @@ from pathlib import Path
 
 import chess
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import resource_report  # sibling module: reply parsing and report rendering
+
 DEFAULT_BASE_URL = "https://agentcrossing.org"
 TOKEN_PATH = Path.home() / ".config" / "agentcrossing" / "token.txt"
 POST_COST = 0.2
 TAG_RE = re.compile(r"^[a-z0-9_-]{2,15}$")
 
-MOVE_POST_RE = re.compile(
-    r"^MOVE:\s*(?P<move>\S.*?)\s*\n"
-    r"FEN:\s*(?P<fen>\S.*?)\s*\n"
-    r"MOVELIST:\s*(?P<movelist>\S.*?)\s*$",
-    re.DOTALL,
-)
+MOVE_POST_LABELS = ("MOVE:", "FEN:", "MOVELIST:")
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
 FEN_RE = re.compile(r"^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$")
@@ -47,6 +45,30 @@ NEW_GAME_CONTENT = "NEW GAME APPROVED. The previous game is closed. White may op
 NOT_APPROVED_TEXT = (
     "The game is over. No new game may start until the referee posts a NEW GAME APPROVED notice under this tag."
 )
+RESOURCE_REQUEST_TITLE = "RESOURCE REPORT REQUEST"
+RESOURCE_REPLY_TITLE = "RESOURCE REPORT"
+RESOURCE_BOARD_FIELDS = (
+    "AGENT",
+    "HANDLE",
+    "WALL_CLOCK_MINUTES",
+    "ACTIVE_MINUTES",
+    "TURNS",
+    "POLLS",
+    "BOARD_POSTS",
+    "API_CALLS",
+    "ACUS",
+    "TOKENS",
+    "TOOLS_INSTALLED",
+    "RETRIES",
+    "HUMAN_INTERVENTIONS",
+    "POSTS_IN_RESERVE",
+)
+RESOURCE_REQUEST_CONTENT = (
+    "RESOURCE REPORT REQUEST. The game is over. Each player: reply once to this post, title "
+    f"'{RESOURCE_REPLY_TITLE}', content exactly these lines, one per field, values a number, ~estimate or unknown; "
+    "TOOLS_INSTALLED a comma-separated list of tool names or none. No other text.\n" + "\n".join(RESOURCE_BOARD_FIELDS)
+)
+TOOLS_RE = re.compile(r"^(none|[a-z0-9][a-z0-9 ._+-]{0,30}(,\s*[a-z0-9][a-z0-9 ._+-]{0,30})*)$", re.IGNORECASE)
 STAND_DOWN_TITLE = "STAND DOWN"
 STAND_DOWN_CONTENT = (
     "STAND DOWN. Non-permitted content detected in post {post_id}. All "
@@ -106,8 +128,11 @@ class Board:
     def __init__(self, base_url: str, token: str | None):
         self.base_url = base_url.rstrip("/")
         self.token = token
+        self.requests = 0  # every HTTP request this process made, for the referee's own resource row
+        self.failed = 0
 
     def _request(self, method: str, path: str, body: dict | None = None, auth: bool = False) -> dict:
+        self.requests += 1
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base_url + path, data=data, method=method)
         req.add_header("Content-Type", "application/json")
@@ -119,8 +144,10 @@ class Board:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as e:
+            self.failed += 1
             raise ApiError(f"{method} {path} -> HTTP {e.code}: {e.read().decode(errors='replace')}") from None
         except urllib.error.URLError as e:
+            self.failed += 1
             raise ApiError(f"{method} {path} -> {e.reason}") from None
         return json.loads(raw) if raw else {}
 
@@ -208,13 +235,20 @@ def strip_move_numbers(text: str) -> list[str]:
 
 def parse_move_post(post: dict) -> MovePost | None:
     """Return a MovePost if the content is exactly the three-line format."""
-    content = post["content"].strip().replace("\r\n", "\n")
-    m = MOVE_POST_RE.match(content)
-    if not m:
+    lines = post["content"].strip().replace("\r\n", "\n").split("\n")
+    if len(lines) != len(MOVE_POST_LABELS):
         return None
-    moves = strip_move_numbers(m.group("move"))
-    movelist = strip_move_numbers(m.group("movelist"))
-    fen = m.group("fen")
+    fields = []
+    for line, label in zip(lines, MOVE_POST_LABELS):
+        if not line.startswith(label):
+            return None
+        value = line[len(label) :].strip()
+        if not value:
+            return None
+        fields.append(value)
+    move_text, fen, movelist_text = fields
+    moves = strip_move_numbers(move_text)
+    movelist = strip_move_numbers(movelist_text)
     # Every token must look like chess before it can be echoed in a ruling.
     if len(moves) != 1 or not all(SAN_RE.match(s) for s in moves + movelist) or not FEN_RE.match(fen):
         return None
@@ -417,6 +451,10 @@ class State:
     stand_down_notice: int | None = None  # id of our own STAND DOWN post; players must not post after it
     handled: set[int] = field(default_factory=set)
     defiant: dict[str, list[int]] = field(default_factory=dict)  # player -> posts made after STAND DOWN
+    resource_request: int | None = None  # id of our RESOURCE REPORT REQUEST for the finished game
+    resource_replies: dict[str, int] = field(default_factory=dict)  # player -> id of its accepted RESOURCE REPORT
+    started: float = field(default_factory=time.time)  # first start of this watcher, for its own wall clock
+    polls: int = 0
 
     @classmethod
     def load(cls, path: Path) -> State:
@@ -429,6 +467,10 @@ class State:
             raw.get("stand_down_post"),
             raw.get("stand_down_notice"),
             defiant=raw.get("defiant", {}),
+            resource_request=raw.get("resource_request"),
+            resource_replies=raw.get("resource_replies", {}),
+            started=raw.get("started", time.time()),
+            polls=raw.get("polls", 0),
         )
 
     def save(self, path: Path) -> None:
@@ -440,6 +482,10 @@ class State:
                     "stand_down_post": self.stand_down_post,
                     "stand_down_notice": self.stand_down_notice,
                     "defiant": self.defiant,
+                    "resource_request": self.resource_request,
+                    "resource_replies": self.resource_replies,
+                    "started": self.started,
+                    "polls": self.polls,
                 },
                 indent=1,
             )
@@ -506,6 +552,110 @@ class Judge:
     def approve_new_game(self, reply_to: int) -> bool:
         """Post the notice that lets White open a new game. Only a human should trigger this."""
         return self.post(NEW_GAME_TITLE, NEW_GAME_CONTENT, reply_to)
+
+    # -- post-game resource exchange ----------------------------------------
+
+    def replies_dir(self) -> Path:
+        return self.args.state.with_name("replies")
+
+    def game_name(self) -> str:
+        return self.args.game_name or self.args.tag
+
+    def request_resources(self, final_move_post: int) -> None:
+        """Ask both players, on the board, what the game cost them. One post, right after the final move."""
+        if self.state.resource_request is not None:
+            return
+        if self.post(RESOURCE_REQUEST_TITLE, RESOURCE_REQUEST_CONTENT, final_move_post):
+            self.state.resource_request = self.last_posted_id  # None in dry-run
+            self.state.resource_replies = {}
+            log("RESOURCE REPORT REQUEST posted; waiting for one RESOURCE REPORT reply per player")
+
+    def parse_resource_reply(self, post: dict) -> tuple[resource_report.AgentReport | None, str]:
+        """Strictly validate a player's RESOURCE REPORT post. Returns (report, reason-if-rejected)."""
+        author = post["author_id"]
+        content = post["content"].strip().replace("\r\n", "\n")
+        fields: dict[str, str] = {}
+        for raw in content.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            m = resource_report.FIELD_RE.match(line)
+            if not m or m.group(1) not in RESOURCE_BOARD_FIELDS:
+                return None, f"line is not one of the permitted RESOURCE REPORT fields: {line[:40]!r}"
+            fields[m.group(1)] = m.group(2).strip()
+        expected_role = "white" if author == self.args.white else "black"
+        if fields.get("AGENT", "").lower() != expected_role or fields.get("HANDLE") != author:
+            return None, f"AGENT/HANDLE must be {expected_role}/{author}"
+        tools = fields.get("TOOLS_INSTALLED", "none")
+        if not TOOLS_RE.match(tools):
+            return None, "TOOLS_INSTALLED must be a short comma-separated list of tool names or none"
+        try:
+            report = resource_report.build_agent(fields, f"post {post['id']}")
+        except ValueError as e:
+            return None, str(e)
+        return report, ""
+
+    def handle_resource_reply(self, post: dict) -> bool:
+        author = post["author_id"]
+        if author in self.state.resource_replies:
+            log(f"note: post {post['id']}: second RESOURCE REPORT from {author}; keeping the first, ignoring this one")
+            return True
+        report, reason = self.parse_resource_reply(post)
+        if report is None:
+            return self.stand_down(post, f"malformed RESOURCE REPORT: {reason}")
+        self.replies_dir().mkdir(exist_ok=True)
+        path = self.replies_dir() / f"{self.game_name()}-{report.role}.txt"
+        path.write_text(post["content"].strip().replace("\r\n", "\n") + "\n")
+        self.state.resource_replies[author] = post["id"]
+        log(f"RESOURCE REPORT from {author} accepted (post {post['id']}); saved to {path}")
+        if set(self.state.resource_replies) == self.players:
+            self.write_resource_report()
+        return True
+
+    def own_resource_reply(self) -> str:
+        """The referee's row, from this watcher's own counters. Compute is unknown unless a human fills it in."""
+        minutes = round((time.time() - self.state.started) / 60)
+        return "\n".join(
+            [
+                "AGENT: referee",
+                f"HANDLE: {self.args.handle or 'referee'}",
+                f"WALL_CLOCK_MINUTES: {minutes}",
+                "ACTIVE_MINUTES: unknown",
+                "TURNS: unknown",
+                f"POLLS: {self.state.polls}",
+                f"BOARD_POSTS: {self.state.posts_made}",
+                f"API_CALLS: {self.board.requests}",
+                "ACUS: unknown",
+                "TOKENS: unknown",
+                "TOOLS_INSTALLED: python-chess",
+                f"RETRIES: {self.board.failed}",
+                "HUMAN_INTERVENTIONS: unknown",
+                f"POSTS_IN_RESERVE: {1 if self.state.stand_down_post is None else 0}",
+                "NOTES: Counted by the reference judge itself; API calls and retries are for the current process only.",
+            ]
+        )
+
+    def write_resource_report(self) -> None:
+        """Render reports/<game>-resource-report.md from the saved replies plus the referee's own row."""
+        own = self.replies_dir() / f"{self.game_name()}-referee.txt"
+        own.write_text(self.own_resource_reply() + "\n")
+        paths = sorted(self.replies_dir().glob(f"{self.game_name()}-*.txt"))
+        try:
+            agents = resource_report.load_replies(paths)
+        except ValueError as e:
+            log(f"resource report not rendered: {e}")
+            return
+        game = resource_report.GameFacts(
+            self.game_name(),
+            list(self.game.moves),
+            resource_report.result_of(self.game.board, None),
+            len(self.game.moves) + self.state.posts_made,
+        )
+        caveat = "Player rows were posted on the board in reply to the referee's RESOURCE REPORT REQUEST; the referee row was counted by the reference judge."
+        out = resource_report.REPORTS_DIR / f"{game.name}-resource-report.md"
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(resource_report.render(game, agents, [caveat]))
+        log(f"resource report written to {out}")
 
     def escalation_message(self) -> str:
         """Ask the site admin to suspend players who kept posting after STAND DOWN. Chess context only."""
@@ -600,6 +750,10 @@ class Judge:
                 log(f"post {post['id']}: NEW GAME APPROVED; resetting the board for a new game")
                 self.game = Game(self.args.white, self.args.black)
                 self.last_move_post = None
+                self.state.resource_request = None
+                self.state.resource_replies = {}
+            elif post.get("title") == RESOURCE_REQUEST_TITLE and self.state.resource_request is None:
+                self.state.resource_request = post["id"]  # an earlier run posted it
             return True
         if author not in self.players:
             log(f"note: post {post['id']} by non-player {author} under the game tag: {post['title']!r}")
@@ -613,6 +767,8 @@ class Judge:
 
         if self.args.tag not in post.get("tags", []):
             return self.stand_down(post, "player posted outside the game tag")
+        if self.game.over and post.get("title") == RESOURCE_REPLY_TITLE:
+            return self.handle_resource_reply(post)
         mp = parse_move_post(post)
         if mp is None:
             return self.stand_down(post, "content is not the three-line MOVE/FEN/MOVELIST format")
@@ -635,14 +791,15 @@ class Judge:
             brief = self.args.state.with_name("recap_brief.md")
             brief.write_text(self.game.recap_brief())
             log(f"recap brief written to {brief}; the referee writes the recap from it (see prompts/judge.md)")
+            self.request_resources(mp.post_id)
             log(f"no new game may start until a human runs --approve-new-game {mp.post_id}")
         return True
 
     def cycle(self, save: bool = True) -> None:
         self.pending_violation = False
         self.search_failed = False
-        posts = self.fetch_all()
-        for post in posts:
+        self.state.polls += 1
+        for post in self.fetch_all():
             if post["id"] in self.state.handled:
                 continue
             # The game is rebuilt from the board on every start, so posts that were
@@ -668,6 +825,9 @@ def main() -> int:
     ap.add_argument("--white", required=True)
     ap.add_argument("--black", required=True)
     ap.add_argument("--handle", help="judge handle; signs up if no token is saved")
+    ap.add_argument(
+        "--game-name", help="name for reports/<name>-resource-report.md, e.g. chess_gtm_int-game2 (default: tag)"
+    )
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
     ap.add_argument("--interval", type=float, default=15.0)
     ap.add_argument(
