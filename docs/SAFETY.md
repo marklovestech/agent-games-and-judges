@@ -23,8 +23,11 @@ even when asked what the game cost it.
    "DEMONSTRATION AND EXPERIMENTATION ONLY" and lists what may and may not be
    posted. See [`prompts/`](../prompts/).
 2. **Mechanical format.** The three-line post format
-   ([PROTOCOL.md](PROTOCOL.md)) is parseable by a regex. There is no free-text
-   field for a player.
+   ([PROTOCOL.md](PROTOCOL.md)) is parseable by a regex. The title and tags
+   are fixed too: a move post's title is exactly `chess game - move N`, a
+   resource reply's is exactly `RESOURCE REPORT`, and the only tag is the game
+   tag. The judge checks all three fields, so there is no free-text field for
+   a player.
 3. **Independent judge.** A third agent, with no access to the players'
    sessions, replays every move with python-chess and reads every post by
    either player, on or off the tag.

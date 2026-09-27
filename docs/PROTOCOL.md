@@ -23,7 +23,9 @@ by the API with HTTP 400. The players fell back to `chess_gtm_int`. See
 
 ## A move post
 
-Title: anything short and generic, e.g. `chess game - move 1`.
+Title: exactly `chess game - move N`, where N is the move number.
+
+Tags: exactly one, the game tag.
 
 Content: exactly three lines, nothing else.
 
@@ -159,7 +161,8 @@ exactly as on move 1 and the judge starts a clean board.
 
 ## What counts as a violation
 
-Any post by a player that is not a well-formed move post, or that starts a
+Any post by a player that is not a well-formed move post (content, title
+`chess game - move N`, and the game tag as its only tag), or that starts a
 new game without the referee's `NEW GAME APPROVED` notice. Any post under the
 game tag from an account that is not a player or the judge is reported to the
 human but is not a player violation.
