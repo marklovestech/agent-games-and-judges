@@ -120,8 +120,18 @@ class Board:
         return json.loads(raw) if raw else {}
 
     def search(self, **filt) -> list[dict]:
+        """Follow next_cursor so games longer than one page are still complete."""
         filt.setdefault("limit", 100)
-        return self._request("POST", "/posts/search", filt)["items"]
+        items: list[dict] = []
+        cursors: set[str] = set()
+        while True:
+            page = self._request("POST", "/posts/search", filt)
+            items.extend(page["items"])
+            cursor = page.get("next_cursor")
+            if not cursor or not page["items"] or cursor in cursors:
+                return items
+            cursors.add(cursor)
+            filt["cursor"] = cursor
 
     def me(self) -> dict:
         return self._request("GET", "/me", auth=True)
@@ -139,11 +149,13 @@ class Board:
 def load_or_create_token(base_url: str, handle: str | None) -> str | None:
     if TOKEN_PATH.exists() and TOKEN_PATH.stat().st_size > 0:
         return TOKEN_PATH.read_text().strip()
+    if TOKEN_PATH.is_symlink() or TOKEN_PATH.exists():
+        TOKEN_PATH.unlink()
     if not handle:
         return None
     token = Board.signup(base_url, handle)
     TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(TOKEN_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+    fd = os.open(TOKEN_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, stat.S_IRUSR | stat.S_IWUSR)
     with os.fdopen(fd, "w") as f:
         f.write(token + "\n")
     TOKEN_PATH.chmod(stat.S_IRUSR | stat.S_IWUSR)
@@ -217,11 +229,14 @@ class Game:
     def expected_author(self) -> str:
         return self.white if self.board.turn == chess.WHITE else self.black
 
+    def side_to_move(self) -> str:
+        return "White" if self.board.turn == chess.WHITE else "Black"
+
     def apply(self, mp: MovePost) -> Ruling:
         if self.over:
             return Ruling(False, "The game is already over; no further moves are accepted.")
         if mp.author != self.expected_author():
-            return Ruling(False, f"Not {mp.author}'s turn. Expected a move from {self.expected_author()}.")
+            return Ruling(False, f"Out of turn. It is {self.side_to_move()}'s move.")
         if mp.movelist[:-1] != self.moves or not mp.movelist or mp.movelist[-1] != mp.move_san:
             return Ruling(
                 False,
@@ -334,6 +349,7 @@ class Judge:
         self.game = Game(args.white, args.black)
         self.players = {args.white, args.black}
         self.last_move_post: int | None = None
+        self.pending_violation = False  # a STAND DOWN still needs to go out
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
 
     # -- posting -----------------------------------------------------------
@@ -376,22 +392,24 @@ class Judge:
         log(f"posted {created.get('id')}")
         return True
 
-    def stand_down(self, post: dict, reason: str) -> None:
+    def stand_down(self, post: dict, reason: str) -> bool:
+        """Return True once the violation needs no further action from this judge."""
         log(f"VIOLATION in post {post['id']} by {post['author_id']}: {reason}")
         print("Offending post, verbatim:\n" + json.dumps(post, indent=2), flush=True)
         if self.state.stand_down_post is not None:
             log("STAND DOWN already issued; not posting again")
-            return
+            return True
         self.quiet = False  # a STAND DOWN is never suppressed while one is not already active
         sent = self.post(
             STAND_DOWN_TITLE, STAND_DOWN_CONTENT.format(post_id=post["id"]), post["id"], is_stand_down=True
         )
         if not sent:
-            log("STAND DOWN could not be posted; will retry on the next violation. Human attention needed.")
-            return
+            log("STAND DOWN could not be posted; will retry next cycle. Human attention needed.")
+            return False
         self.state.stand_down_post = post["id"]
         log("STAND DOWN issued. Posting is now disabled until a human restarts with --resume.")
         self.quiet = True
+        return True
 
     # -- one poll cycle ----------------------------------------------------
 
@@ -407,23 +425,23 @@ class Judge:
                     posts[p["id"]] = p
             except ApiError as e:
                 log(f"search {filt} failed: {e}")
+                self.pending_violation = True  # cannot prove the board is clean; keep polling
         return [posts[i] for i in sorted(posts)]
 
-    def handle(self, post: dict) -> None:
+    def handle(self, post: dict) -> bool:
+        """Return True if the post is fully dealt with and need not be revisited."""
         author = post["author_id"]
         if author == self.args.handle:
-            return
+            return True
         if author not in self.players:
             log(f"note: post {post['id']} by non-player {author} under the game tag: {post['title']!r}")
-            return
+            return True
 
         if self.args.tag not in post.get("tags", []):
-            self.stand_down(post, "player posted outside the game tag")
-            return
+            return self.stand_down(post, "player posted outside the game tag")
         mp = parse_move_post(post)
         if mp is None:
-            self.stand_down(post, "content is not the three-line MOVE/FEN/MOVELIST format")
-            return
+            return self.stand_down(post, "content is not the three-line MOVE/FEN/MOVELIST format")
 
         if self.last_move_post is not None and self.last_move_post not in mp.reply_to:
             log(f"warning: post {mp.post_id} does not reply to the previous move post {self.last_move_post}")
@@ -440,17 +458,21 @@ class Judge:
             self.post("ruling" if not ruling.ok else "commentary", ruling.text, mp.post_id)
         if ruling.result:
             log(f"GAME OVER {ruling.result}. Final move list: {' '.join(self.game.moves)}")
+        return True
 
     def cycle(self) -> None:
+        self.pending_violation = False
         for post in self.fetch_all():
             if post["id"] in self.state.handled:
                 continue
             # The game is rebuilt from the board on every start, so posts that were
             # already handled in an earlier run are replayed silently.
             self.quiet = post["id"] in self.state.seen or self.state.stand_down_post is not None
-            self.handle(post)
-            self.state.seen.add(post["id"])
-            self.state.handled.add(post["id"])
+            if self.handle(post):
+                self.state.seen.add(post["id"])
+                self.state.handled.add(post["id"])
+            else:
+                self.pending_violation = True
         self.state.save(self.args.state)
 
 
@@ -491,7 +513,7 @@ def main() -> int:
     try:
         while True:
             judge.cycle()
-            if args.once or judge.game.over:
+            if args.once or (judge.game.over and not judge.pending_violation):
                 return 0
             time.sleep(args.interval)
     except KeyboardInterrupt:
