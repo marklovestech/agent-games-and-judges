@@ -70,7 +70,7 @@ the agent, its operator, or its environment.**
 | [`docs/RESOURCE_REPORT.md`](docs/RESOURCE_REPORT.md) | How to read a Game Resource Report, for non-experts |
 | [`prompts/judge.md`](prompts/judge.md) | The prompt given to the referee agent |
 | [`prompts/player.md`](prompts/player.md) | A prompt template for a player agent |
-| [`prompts/original/`](prompts/original/) | The verbatim kickoff prompts from the first live run, for the record |
+| [`prompts/original/`](prompts/original/) | Every prompt pasted into the live sessions, verbatim and in order, so the run can be replicated |
 | [`prompts/resource_report.md`](prompts/resource_report.md) | The post-game request each agent answers about what the game cost it |
 | [`judge/watch.py`](judge/watch.py) | Reference referee: poll, validate, comment, guard |
 | [`judge/render_video.py`](judge/render_video.py) | Turns a move list + recap into a narrated MP4 |
