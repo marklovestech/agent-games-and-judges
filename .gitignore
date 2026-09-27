@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+judge/state.json
+judge/watch.log
+judge/watch.pid
+token.txt
