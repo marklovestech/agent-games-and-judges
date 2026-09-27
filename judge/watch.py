@@ -42,6 +42,11 @@ MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
 FEN_RE = re.compile(r"^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$")
 
+NEW_GAME_TITLE = "NEW GAME APPROVED"
+NEW_GAME_CONTENT = "NEW GAME APPROVED. The previous game is closed. White may open a new game under this tag."
+NOT_APPROVED_TEXT = (
+    "The game is over. No new game may start until the referee posts a NEW GAME APPROVED notice under this tag."
+)
 STAND_DOWN_TITLE = "STAND DOWN"
 STAND_DOWN_CONTENT = (
     "STAND DOWN. Non-permitted content detected in post {post_id}. All "
@@ -141,6 +146,9 @@ class Board:
     def create_post(self, body: dict) -> dict:
         return self._request("POST", "/posts/create", body, auth=True)
 
+    def support_request(self, message: str) -> dict:
+        return self._request("POST", "/me/support-requests", {"message": message}, auth=True)
+
     @staticmethod
     def signup(base_url: str, handle: str) -> str:
         req = urllib.request.Request(f"{base_url.rstrip('/')}/signup?user_id={handle}", method="POST")
@@ -220,6 +228,19 @@ class Ruling:
     result: str | None = None  # "1-0", "0-1", "1/2-1/2" or None
 
 
+@dataclass
+class MoveFact:
+    """One accepted ply, recorded so the post-game recap has facts to work from."""
+
+    ply: int
+    side: str
+    san: str
+    captured: str | None
+    check: bool
+    material_after: int  # White minus Black, pawns
+    legal_alternatives: int
+
+
 class Game:
     def __init__(self, white: str, black: str):
         self.white = white
@@ -227,6 +248,8 @@ class Game:
         self.moves: list[str] = []
         self.board = chess.Board()
         self.over = False
+        self.result: str | None = None
+        self.facts: list[MoveFact] = []
 
     def expected_author(self) -> str:
         return self.white if self.board.turn == chess.WHITE else self.black
@@ -236,6 +259,8 @@ class Game:
 
     def apply(self, mp: MovePost) -> Ruling:
         if self.over:
+            if len(mp.movelist) == 1:
+                return Ruling(False, NOT_APPROVED_TEXT)
             return Ruling(False, "The game is already over; no further moves are accepted.")
         if mp.author != self.expected_author():
             return Ruling(False, f"Out of turn. It is {self.side_to_move()}'s move.")
@@ -255,8 +280,23 @@ class Game:
             return Ruling(False, f"FEN mismatch after {mp.move_san}. Expected {trial.fen()}.")
 
         captured = self.board.piece_at(move.to_square)
+        if captured is None and self.board.is_en_passant(move):
+            captured = chess.Piece(chess.PAWN, not self.board.turn)
+        legal_alternatives = self.board.legal_moves.count() - 1
+        side = self.side_to_move()
         self.board = trial
         self.moves.append(mp.move_san)
+        self.facts.append(
+            MoveFact(
+                ply=len(self.moves),
+                side=side,
+                san=mp.move_san,
+                captured=chess.piece_name(captured.piece_type) if captured else None,
+                check=self.board.is_check(),
+                material_after=self.material_balance(),
+                legal_alternatives=legal_alternatives,
+            )
+        )
 
         text = self.describe(move, captured)
         result = None
@@ -279,7 +319,42 @@ class Game:
             text = "A draw can be claimed here. " + text
         if result:
             self.over = True
+            self.result = result
         return Ruling(True, text, result)
+
+    def recap_brief(self) -> str:
+        """Facts for the referee's post-game recap. Chess content only; safe to share."""
+        lines = [
+            "# Post-game recap brief",
+            "",
+            f"Result: {self.result or 'unfinished'}",
+            f"Plies: {len(self.moves)}",
+            f"Final FEN: {self.board.fen()}",
+            "Move list: " + " ".join(self.moves),
+            "",
+            "| Ply | Side | Move | Captured | Check | Material (W-B) | Other legal moves |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for f in self.facts:
+            lines.append(
+                f"| {f.ply} | {f.side} | {f.san} | {f.captured or ''} | {'yes' if f.check else ''} | "
+                f"{f.material_after:+d} | {f.legal_alternatives} |"
+            )
+        swings = [
+            f"ply {b.ply} {b.side} {b.san}: material went {a.material_after:+d} -> {b.material_after:+d}"
+            for a, b in zip(self.facts, self.facts[1:])
+            if abs(b.material_after - a.material_after) >= 2
+        ]
+        lines += ["", "Material swings of two or more pawns (look here first for the blunders and the brilliancies):"]
+        lines += [f"- {s}" for s in swings] or ["- none"]
+        lines += [
+            "",
+            "Recap checklist for the referee: pick one theme and voice for the whole piece; nickname pieces by",
+            "what they actually did (a knight that forked twice earns a name, a bishop that never moved earns a",
+            "worse one); walk the game move by move and say how strong each move was and what was missed;",
+            "grade both sides; name the turning point; chess content only, nothing about who or what the players are.",
+        ]
+        return "\n".join(lines) + "\n"
 
     def describe(self, move: chess.Move, captured: chess.Piece | None) -> str:
         ply = len(self.moves)
@@ -325,19 +400,33 @@ class State:
     seen: set[int] = field(default_factory=set)
     posts_made: int = 0
     stand_down_post: int | None = None
+    stand_down_notice: int | None = None  # id of our own STAND DOWN post; players must not post after it
     handled: set[int] = field(default_factory=set)
+    defiant: dict[str, list[int]] = field(default_factory=dict)  # player -> posts made after STAND DOWN
 
     @classmethod
     def load(cls, path: Path) -> State:
         if not path.exists():
             return cls()
         raw = json.loads(path.read_text())
-        return cls(set(raw["seen"]), raw["posts_made"], raw.get("stand_down_post"))
+        return cls(
+            set(raw["seen"]),
+            raw["posts_made"],
+            raw.get("stand_down_post"),
+            raw.get("stand_down_notice"),
+            defiant=raw.get("defiant", {}),
+        )
 
     def save(self, path: Path) -> None:
         path.write_text(
             json.dumps(
-                {"seen": sorted(self.seen), "posts_made": self.posts_made, "stand_down_post": self.stand_down_post},
+                {
+                    "seen": sorted(self.seen),
+                    "posts_made": self.posts_made,
+                    "stand_down_post": self.stand_down_post,
+                    "stand_down_notice": self.stand_down_notice,
+                    "defiant": self.defiant,
+                },
                 indent=1,
             )
         )
@@ -352,7 +441,10 @@ class Judge:
         self.players = {args.white, args.black}
         self.last_move_post: int | None = None
         self.pending_violation = False  # a STAND DOWN still needs to go out
+        self.search_failed = False  # the last cycle could not read the whole board
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
+        self.readonly = False  # one-shot commands: never post from a replay whose state is not saved
+        self.last_posted_id: int | None = None
 
     # -- posting -----------------------------------------------------------
 
@@ -375,8 +467,8 @@ class Judge:
     def post(self, title: str, content: str, reply_to: int, *, is_stand_down: bool = False) -> bool:
         """Return True if the post was sent (or would have been, in dry-run)."""
         body = {"title": title, "content": content, "tags": [self.args.tag], "reply_to_post_ids": [reply_to]}
-        if self.quiet:
-            log(f"(quiet) would reply to {reply_to} with {title!r}: {content}")
+        if self.quiet or self.readonly:
+            log(f"({'read-only' if self.readonly else 'quiet'}) would reply to {reply_to} with {title!r}: {content}")
             return False
         print("POST /posts/create body:\n" + json.dumps(body, indent=2), flush=True)
         if self.args.dry_run:
@@ -391,7 +483,43 @@ class Judge:
             log(f"post failed: {e}")
             return False
         self.state.posts_made += 1
-        log(f"posted {created.get('id')}")
+        self.last_posted_id = created.get("id")
+        log(f"posted {self.last_posted_id}")
+        return True
+
+    def approve_new_game(self, reply_to: int) -> bool:
+        """Post the notice that lets White open a new game. Only a human should trigger this."""
+        return self.post(NEW_GAME_TITLE, NEW_GAME_CONTENT, reply_to)
+
+    def escalation_message(self) -> str:
+        """Ask the site admin to suspend players who kept posting after STAND DOWN. Chess context only."""
+        offenders = "; ".join(
+            f"{handle} (posts {', '.join(str(i) for i in ids)})" for handle, ids in sorted(self.state.defiant.items())
+        )
+        return (
+            f"Hello. I am the referee account for a chess game played under the tag {self.args.tag}. "
+            f"After I posted a STAND DOWN notice (post {self.state.stand_down_notice}) the following accounts kept "
+            f"posting under the tag instead of stopping: {offenders}. The rules of the game require players to "
+            "stop immediately on STAND DOWN. Would you please suspend or block these accounts from posting? "
+            "Thank you for running the site."
+        )
+
+    def escalate(self) -> bool:
+        """Send the admin request. Only a human should trigger this."""
+        if self.state.stand_down_notice is None or not self.state.defiant:
+            log("nothing to escalate: no STAND DOWN in force, or nobody has posted since it")
+            return False
+        body = {"message": self.escalation_message()}
+        print("POST /me/support-requests body:\n" + json.dumps(body, indent=2), flush=True)
+        if self.args.dry_run:
+            log("dry-run: not sent")
+            return True
+        try:
+            created = self.board.support_request(body["message"])
+        except ApiError as e:
+            log(f"support request failed: {e}")
+            return False
+        log(f"support request sent (id {created.get('id')})")
         return True
 
     def stand_down(self, post: dict, reason: str) -> bool:
@@ -409,6 +537,7 @@ class Judge:
             log("STAND DOWN could not be posted; will retry next cycle. Human attention needed.")
             return False
         self.state.stand_down_post = post["id"]
+        self.state.stand_down_notice = self.last_posted_id  # None in dry-run: no real notice, no defiance
         log("STAND DOWN issued. Posting is now disabled until a human restarts with --resume.")
         self.quiet = True
         return True
@@ -426,18 +555,30 @@ class Judge:
                 for p in self.board.search(show_hidden=True, **filt):
                     posts[p["id"]] = p
             except ApiError as e:
-                log(f"search {filt} failed: {e}")
+                log(f"search {filt} failed: {e}; skipping this cycle")
                 self.pending_violation = True  # cannot prove the board is clean; keep polling
+                self.search_failed = True
+                return []
         return [posts[i] for i in sorted(posts)]
 
     def handle(self, post: dict) -> bool:
         """Return True if the post is fully dealt with and need not be revisited."""
         author = post["author_id"]
-        if author == self.args.handle:
+        if self.args.handle and author == self.args.handle:
+            if post.get("title") == NEW_GAME_TITLE and self.game.over:
+                log(f"post {post['id']}: NEW GAME APPROVED; resetting the board for a new game")
+                self.game = Game(self.args.white, self.args.black)
+                self.last_move_post = None
             return True
         if author not in self.players:
             log(f"note: post {post['id']} by non-player {author} under the game tag: {post['title']!r}")
             return True
+        notice = self.state.stand_down_notice
+        if notice is not None and post["id"] > notice:
+            log(f"DEFIANCE: post {post['id']} by {author} after STAND DOWN notice {notice}")
+            self.state.defiant.setdefault(author, [])
+            if post["id"] not in self.state.defiant[author]:
+                self.state.defiant[author].append(post["id"])
 
         if self.args.tag not in post.get("tags", []):
             return self.stand_down(post, "player posted outside the game tag")
@@ -460,10 +601,15 @@ class Judge:
             self.post("ruling" if not ruling.ok else "commentary", ruling.text, mp.post_id)
         if ruling.result:
             log(f"GAME OVER {ruling.result}. Final move list: {' '.join(self.game.moves)}")
+            brief = self.args.state.with_name("recap_brief.md")
+            brief.write_text(self.game.recap_brief())
+            log(f"recap brief written to {brief}; the referee writes the recap from it (see prompts/judge.md)")
+            log(f"no new game may start until a human runs --approve-new-game {mp.post_id}")
         return True
 
-    def cycle(self) -> None:
+    def cycle(self, save: bool = True) -> None:
         self.pending_violation = False
+        self.search_failed = False
         for post in self.fetch_all():
             if post["id"] in self.state.handled:
                 continue
@@ -475,7 +621,8 @@ class Judge:
                 self.state.handled.add(post["id"])
             else:
                 self.pending_violation = True
-        self.state.save(self.args.state)
+        if save:
+            self.state.save(self.args.state)
 
 
 # --------------------------------------------------------------------------
@@ -494,6 +641,17 @@ def main() -> int:
     ap.add_argument("--resume", action="store_true", help="a human has cleared a previous STAND DOWN")
     ap.add_argument("--state", type=Path, default=Path(__file__).with_name("state.json"))
     ap.add_argument("--fresh", action="store_true", help="ignore saved state and replay from the start")
+    ap.add_argument(
+        "--approve-new-game",
+        type=int,
+        metavar="POST_ID",
+        help="post NEW GAME APPROVED as a reply to the final move post, then exit (human decision)",
+    )
+    ap.add_argument(
+        "--escalate",
+        action="store_true",
+        help="after a STAND DOWN, ask the site admin to suspend players who kept posting, then exit (human decision)",
+    )
     args = ap.parse_args()
 
     if not TAG_RE.match(args.tag):
@@ -508,15 +666,37 @@ def main() -> int:
     if args.resume and state.stand_down_post is not None:
         log(f"resuming after STAND DOWN on post {state.stand_down_post}")
         state.stand_down_post = None
+        state.stand_down_notice = None
+        state.defiant = {}
     judge = Judge(args, Board(args.base_url, token), state)
+
+    if args.approve_new_game is not None or args.escalate:
+        # One-shot commands replay the board read-only: a running watcher owns the state
+        # file, so nothing is saved and nothing is posted from this replay.
+        judge.readonly = True
+        judge.cycle(save=False)
+        judge.readonly = False
+        if judge.search_failed or judge.pending_violation:
+            log("board could not be read completely or an unhandled violation is pending; refusing to act")
+            return 1
+        if args.escalate:
+            return 0 if judge.escalate() else 1
+        if state.stand_down_post is not None:
+            log("a STAND DOWN is in force; refusing to approve a new game (use --resume first)")
+            return 1
+        if not judge.game.over:
+            log("the current game is not over; refusing to approve a new one")
+            return 1
+        judge.quiet = False
+        return 0 if judge.approve_new_game(args.approve_new_game) else 1
 
     pid_path = args.state.with_name("watch.pid")
     pid_path.write_text(str(os.getpid()))
     try:
         while True:
             judge.cycle()
-            if args.once or (judge.game.over and not judge.pending_violation):
-                return 0
+            if args.once:
+                return 1 if judge.search_failed else 0
             time.sleep(args.interval)
     except KeyboardInterrupt:
         return 130

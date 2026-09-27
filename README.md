@@ -48,6 +48,13 @@ the agent, its operator, or its environment.**
   move with [python-chess](https://python-chess.readthedocs.io/), verifies the
   FEN and move list, posts sparse commentary, and issues a single
   `STAND DOWN` notice if anyone posts anything that is not a move.
+* **After the final move** the judge turns sportscaster: one recap post with
+  a theme for the game, pieces nicknamed for how they played
+  (`White-King-Ironman`, `Black-Castle-Lancelot`), every move graded, awards
+  handed out. It also asks every agent what the game cost it (minutes,
+  polls, posts, ACUs) and renders a **resource report** for the repo. Then it
+  holds the door: **no new game starts until the judge
+  posts `NEW GAME APPROVED`**, which it only does when its human says so.
 
 ## Repository layout
 
@@ -57,10 +64,14 @@ the agent, its operator, or its environment.**
 | [`docs/SAFETY.md`](docs/SAFETY.md) | Why the rules are shaped the way they are (public, permanent, adversarial) |
 | [`docs/AGENTCROSSING.md`](docs/AGENTCROSSING.md) | The parts of the board API this experiment uses, plus the gotchas |
 | [`docs/LESSONS.md`](docs/LESSONS.md) | What we learned from the live run |
+| [`docs/RESOURCE_REPORT.md`](docs/RESOURCE_REPORT.md) | How to read a Game Resource Report, for non-experts |
 | [`prompts/judge.md`](prompts/judge.md) | The prompt given to the referee agent |
 | [`prompts/player.md`](prompts/player.md) | A prompt template for a player agent |
 | [`prompts/original/`](prompts/original/) | The verbatim kickoff prompts from the first live run, for the record |
+| [`prompts/resource_report.md`](prompts/resource_report.md) | The post-game request each agent answers about what the game cost it |
 | [`judge/watch.py`](judge/watch.py) | Reference referee: poll, validate, comment, guard |
+| [`judge/resource_report.py`](judge/resource_report.py) | Renders `reports/<game>-resource-report.md` from the agents' replies |
+| [`reports/`](reports/) | Game Resource Reports ([example](reports/example-resource-report.md)) |
 | [`player/make_move.py`](player/make_move.py) | Helper that turns a chosen move into a correctly formatted post |
 
 ## Try it yourself
@@ -75,6 +86,17 @@ python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_intern
 
 # Become a referee (creates ~/.config/agentcrossing/token.txt on first run):
 python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_internet --handle judge_yourname
+
+# After a game ends: the judge writes judge/recap_brief.md (a per-move facts
+# table) for the referee agent's recap post. When you want the next game to
+# start, and only then, let White know:
+python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_internet \
+    --handle judge_yourname --approve-new-game <final move post id>
+
+# If a player keeps posting after a STAND DOWN: ask the site admin to suspend
+# them (prints the exact support request first; a human decision, never automatic):
+python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_internet \
+    --handle judge_yourname --escalate
 ```
 
 `--dry-run` prints every post body it *would* send and sends nothing. Start
@@ -89,6 +111,38 @@ python player/make_move.py --movelist "1. e4" --move e5
 # prints the three-line post body and the JSON for POST /posts/create
 ```
 
+## After the game: resource report
+
+Once the recap is up, the referee asks each participating agent, **through
+its human and in its own session, never on the board**, how much it used:
+minutes open, turns, polls, posts, API calls, ACUs or tokens if known,
+retries, human interventions. The request and reply form are in
+[`prompts/resource_report.md`](prompts/resource_report.md). Save each reply
+as a file and render the report:
+
+```bash
+python judge/resource_report.py --game chess_gtm_int \
+    --movelist "<full SAN move list>" --board-posts <posts for this game> \
+    replies/white.txt replies/black.txt replies/referee.txt
+# or, with the reference judge's facts table: --brief judge/recap_brief.md
+
+# See the format without a game (made-up numbers):
+python judge/resource_report.py --example
+```
+
+The script never invents a number: `unknown` stays `unknown` and is left out
+of the totals. [`docs/RESOURCE_REPORT.md`](docs/RESOURCE_REPORT.md) explains
+how to read the result if you have never run an agent.
+
+**Where the reports live.** Every finished report is committed to
+[`reports/`](reports/) as `reports/<game>-resource-report.md`, one file per
+game, alongside the made-up
+[`example-resource-report.md`](reports/example-resource-report.md). They are
+plain Markdown: open the folder on GitHub and click a file to read it rendered,
+or `cat reports/<game>-resource-report.md` from a checkout. Since the tag is
+reused across games, name later games distinctly (e.g. `--game chess_gtm_int-2`)
+so each game keeps its own file.
+
 ## Rules of the road
 
 * Post **only** the game. No small talk, no questions, no "hello".
@@ -96,7 +150,9 @@ python player/make_move.py --movelist "1. e4" --move e5
   vendor, or product names; no companies, people, emails, URLs, hostnames,
   file paths, code, ticket IDs, or credentials.
 * Each post costs reputation. A fresh account gets about five posts. Keep one
-  in reserve for a `STAND DOWN`.
+  in reserve for a `STAND DOWN`, and the judge keeps one for the recap.
+* When the game ends, players stop. Nobody opens a new game until the judge
+  posts `NEW GAME APPROVED`.
 * If in doubt, do not post. Ask your human.
 
 The long version, and the reasoning, is in [docs/SAFETY.md](docs/SAFETY.md).

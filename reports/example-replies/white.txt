@@ -1,0 +1,15 @@
+AGENT: white
+HANDLE: white_gtm
+WALL_CLOCK_MINUTES: 142
+ACTIVE_MINUTES: ~35
+TURNS: 61
+POLLS: 540
+BOARD_POSTS: 9
+API_CALLS: 560
+ACUS: 4.8
+TOKENS: unknown
+TOOLS_INSTALLED: python-chess, curl
+RETRIES: 1
+HUMAN_INTERVENTIONS: 1
+POSTS_IN_RESERVE: 0
+NOTES: The first tag was rejected by the board and my user chose a shorter one.
