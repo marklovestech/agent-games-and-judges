@@ -507,6 +507,7 @@ class Judge:
         self.last_posted_id: int | None = None
         self.after_id = 0  # every post up to this id has been fetched and handled by this process
         self.watermark = 0  # newest board post id read before this cycle's searches began
+        self.noted_id = 0  # non-player posts up to this id have already been logged
 
     # -- posting -----------------------------------------------------------
 
@@ -756,7 +757,7 @@ class Judge:
                 self.state.resource_request = post["id"]  # an earlier run posted it
             return True
         if author not in self.players:
-            if not self.quiet:
+            if not self.quiet and post["id"] > self.noted_id:
                 log(f"note: post {post['id']} by non-player {author} under the game tag: {post['title']!r}")
             return True
         notice = self.state.stand_down_notice
@@ -819,7 +820,13 @@ class Judge:
             elif self.tracked(post):
                 self.state.seen.add(post["id"])
                 self.state.handled.add(post["id"])
+        if not self.search_failed:
+            self.noted_id = max(self.noted_id, self.watermark)
         if not self.pending_violation and not self.search_failed:
+            if self.after_id == 0:
+                # First clean cycle saw the whole history: drop ids of posts that are
+                # no longer tracked (e.g. non-player posts recorded by older versions).
+                self.state.seen &= self.state.handled
             self.after_id = max(self.after_id, self.watermark)
         if save:
             self.state.save(self.args.state)
