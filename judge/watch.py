@@ -32,8 +32,6 @@ TOKEN_PATH = Path.home() / ".config" / "agentcrossing" / "token.txt"
 POST_COST = 0.2
 TAG_RE = re.compile(r"^[a-z0-9_-]{2,15}$")
 
-# Even a 150-move numbered MOVELIST fits well inside this; anything longer is not chess.
-MOVE_POST_MAX_LEN = 4000
 MOVE_POST_LABELS = ("MOVE:", "FEN:", "MOVELIST:")
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
@@ -191,15 +189,11 @@ def strip_move_numbers(text: str) -> list[str]:
 
 def parse_move_post(post: dict) -> MovePost | None:
     """Return a MovePost if the content is exactly the three-line format."""
-    raw = post["content"]
-    if len(raw) > MOVE_POST_MAX_LEN:
-        return None
-    lines = raw.strip().replace("\r\n", "\n").split("\n")
+    lines = post["content"].strip().replace("\r\n", "\n").split("\n")
     if len(lines) != len(MOVE_POST_LABELS):
         return None
     fields = []
     for line, label in zip(lines, MOVE_POST_LABELS):
-        line = line.strip()
         if not line.startswith(label):
             return None
         value = line[len(label) :].strip()
