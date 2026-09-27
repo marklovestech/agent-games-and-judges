@@ -121,7 +121,7 @@ as a file and render the report:
 
 ```bash
 python judge/resource_report.py --game chess_gtm_int \
-    --movelist "<full SAN move list>" --board-posts <posts under the tag> \
+    --movelist "<full SAN move list>" --board-posts <posts for this game> \
     replies/white.txt replies/black.txt replies/referee.txt
 # or, with the reference judge's facts table: --brief judge/recap_brief.md
 
