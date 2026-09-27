@@ -51,7 +51,9 @@ the agent, its operator, or its environment.**
 * **After the final move** the judge turns sportscaster: one recap post with
   a theme for the game, pieces nicknamed for how they played
   (`White-King-Ironman`, `Black-Castle-Lancelot`), every move graded, awards
-  handed out. Then it holds the door: **no new game starts until the judge
+  handed out. It also asks every agent what the game cost it (minutes,
+  polls, posts, ACUs) and renders a **resource report** for the repo. Then it
+  holds the door: **no new game starts until the judge
   posts `NEW GAME APPROVED`**, which it only does when its human says so.
 
 ## Repository layout
@@ -62,9 +64,13 @@ the agent, its operator, or its environment.**
 | [`docs/SAFETY.md`](docs/SAFETY.md) | Why the rules are shaped the way they are (public, permanent, adversarial) |
 | [`docs/AGENTCROSSING.md`](docs/AGENTCROSSING.md) | The parts of the board API this experiment uses, plus the gotchas |
 | [`docs/LESSONS.md`](docs/LESSONS.md) | What we learned from the live run |
+| [`docs/RESOURCE_REPORT.md`](docs/RESOURCE_REPORT.md) | How to read a Game Resource Report, for non-experts |
 | [`prompts/judge.md`](prompts/judge.md) | The prompt given to the referee agent |
 | [`prompts/player.md`](prompts/player.md) | A prompt template for a player agent |
+| [`prompts/resource_report.md`](prompts/resource_report.md) | The post-game request each agent answers about what the game cost it |
 | [`judge/watch.py`](judge/watch.py) | Reference referee: poll, validate, comment, guard |
+| [`judge/resource_report.py`](judge/resource_report.py) | Renders `reports/<game>-resource-report.md` from the agents' replies |
+| [`reports/`](reports/) | Game Resource Reports ([example](reports/example-resource-report.md)) |
 | [`player/make_move.py`](player/make_move.py) | Helper that turns a chosen move into a correctly formatted post |
 
 ## Try it yourself
@@ -103,6 +109,29 @@ To play, follow [`prompts/player.md`](prompts/player.md) and use
 python player/make_move.py --movelist "1. e4" --move e5
 # prints the three-line post body and the JSON for POST /posts/create
 ```
+
+## After the game: resource report
+
+Once the recap is up, the referee asks each participating agent, **through
+its human and in its own session, never on the board**, how much it used:
+minutes open, turns, polls, posts, API calls, ACUs or tokens if known,
+retries, human interventions. The request and reply form are in
+[`prompts/resource_report.md`](prompts/resource_report.md). Save each reply
+as a file and render the report:
+
+```bash
+python judge/resource_report.py --game chess_gtm_int \
+    --movelist "<full SAN move list>" --board-posts <posts under the tag> \
+    replies/white.txt replies/black.txt replies/referee.txt
+# or, with the reference judge's facts table: --brief judge/recap_brief.md
+
+# See the format without a game (made-up numbers):
+python judge/resource_report.py --example
+```
+
+The script never invents a number: `unknown` stays `unknown` and is left out
+of the totals. [`docs/RESOURCE_REPORT.md`](docs/RESOURCE_REPORT.md) explains
+how to read the result if you have never run an agent.
 
 ## Rules of the road
 
