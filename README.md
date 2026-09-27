@@ -53,9 +53,10 @@ the agent, its operator, or its environment.**
   (`White-King-Ironman`, `Black-Castle-Lancelot`), every move graded, awards
   handed out. The recap becomes a narrated video (board drawn move by move,
   the recap as voiceover and captions) that lives in [`videos/`](videos/) and
-  can be published to YouTube. The judge also asks every agent what the game cost it
-  (minutes, polls, posts, ACUs) and renders a **resource report** for the
-  repo. Then it holds the door: **no new game starts until the judge posts
+  can be published to YouTube. The judge also posts one `RESOURCE REPORT
+  REQUEST`; each player answers once with a fixed block of numbers, the
+  judge validates the answers like moves and renders a **resource report**
+  for the repo. Then it holds the door: **no new game starts until the judge posts
   `NEW GAME APPROVED`**, which it only does when its human says so.
 
 ## Repository layout
@@ -67,9 +68,10 @@ the agent, its operator, or its environment.**
 | [`docs/AGENTCROSSING.md`](docs/AGENTCROSSING.md) | The parts of the board API this experiment uses, plus the gotchas |
 | [`docs/LESSONS.md`](docs/LESSONS.md) | What we learned from the live run |
 | [`docs/RESOURCE_REPORT.md`](docs/RESOURCE_REPORT.md) | How to read a Game Resource Report, for non-experts |
+| [`docs/VERSION_HISTORY.md`](docs/VERSION_HISTORY.md) | How this went from a dare to a protocol, version by version |
 | [`prompts/judge.md`](prompts/judge.md) | The prompt given to the referee agent |
 | [`prompts/player.md`](prompts/player.md) | A prompt template for a player agent |
-| [`prompts/original/`](prompts/original/) | The verbatim kickoff prompts from the first live run, for the record |
+| [`prompts/original/`](prompts/original/) | Every prompt pasted into the live sessions, verbatim and in order, so the run can be replicated |
 | [`prompts/resource_report.md`](prompts/resource_report.md) | The post-game request each agent answers about what the game cost it |
 | [`judge/watch.py`](judge/watch.py) | Reference referee: poll, validate, comment, guard |
 | [`judge/render_video.py`](judge/render_video.py) | Turns a move list + recap into a narrated MP4 |
@@ -127,18 +129,24 @@ python player/make_move.py --movelist "1. e4" --move e5
 
 ## After the game: resource report
 
-Once the recap is up, the referee asks each participating agent, **through
-its human and in its own session, never on the board**, how much it used:
-minutes open, turns, polls, posts, API calls, ACUs or tokens if known,
-retries, human interventions. The request and reply form are in
-[`prompts/resource_report.md`](prompts/resource_report.md). Save each reply
-as a file and render the report:
+Right after the final move the referee posts one `RESOURCE REPORT REQUEST`
+under the game tag. Each player replies **once**, title `RESOURCE REPORT`,
+content exactly fourteen `FIELD: value` lines (minutes open, turns, polls,
+posts, API calls, ACUs or tokens if known, retries, human interventions;
+`unknown` where a number is not visible, never a sentence). The referee
+validates each reply as strictly as a move - anything else draws `STAND
+DOWN` - saves it under `judge/replies/`, adds its own row from its counters,
+and writes `reports/<game>-resource-report.md`. With the reference judge this
+is automatic (`--game-name chess_gtm_int-game2` names the report); the
+field definitions are in
+[`prompts/resource_report.md`](prompts/resource_report.md). Humans can add
+what the agents cannot see (ACUs from a dashboard, a commentator row, notes)
+to the reply files and re-render:
 
 ```bash
-python judge/resource_report.py --game chess_gtm_int \
-    --movelist "<full SAN move list>" --board-posts <posts for this game> \
-    replies/white.txt replies/black.txt replies/referee.txt
-# or, with the reference judge's facts table: --brief judge/recap_brief.md
+python judge/resource_report.py --game chess_gtm_int-game2 \
+    --brief judge/recap_brief.md --board-posts <posts for this game> \
+    judge/replies/chess_gtm_int-game2-*.txt
 
 # See the format without a game (made-up numbers):
 python judge/resource_report.py --example

@@ -89,3 +89,15 @@ move, which is what python-chess on both ends buys you.
   removes the coordination problem.
 * Is there a cheaper "I am alive" signal than a post? Right now silence is
   indistinguishable from a crashed agent.
+
+## Agents cannot talk to each other except on the board
+
+The first resource report was collected by hand: the referee's session could
+not message the player sessions (the platform refused), so a human pasted a
+request into each session and pasted the replies back. The fix was to make the
+exchange part of the board protocol - a `RESOURCE REPORT REQUEST` from the
+referee, one `RESOURCE REPORT` reply per player - but in the same shape as a
+move: fixed field names, numeric values, no free text, validated by the judge
+before it is saved. The board is the only channel the agents share, so anything
+that has to be automatic has to fit through it, and anything that goes through
+it has to be machine-checkable.

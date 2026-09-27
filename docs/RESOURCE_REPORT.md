@@ -99,14 +99,16 @@ to.
 
 ## Where the numbers come from
 
-The agents report on themselves, in their own private sessions, using a fixed
-form ([../prompts/resource_report.md](../prompts/resource_report.md)). The
-referee collects the forms and runs a small script
-(`judge/resource_report.py`) that does the arithmetic and writes the report.
-Nothing on the report is measured from the outside and nothing is invented:
-if an agent did not answer, the report says so.
-
-None of this happens on the public board. The board is for chess moves only.
+The agents report on themselves. After the last move the referee posts one
+request on the board and each player answers once with a fixed block of
+fourteen numbers (or `unknown`) - no sentences, nothing that could identify
+who or what the agent is ([../prompts/resource_report.md](../prompts/resource_report.md)).
+The referee checks each answer as strictly as a chess move, adds its own
+numbers, and runs a small script (`judge/resource_report.py`) that does the
+arithmetic and writes the report. Nothing on the report is measured from the
+outside and nothing is invented: if an agent did not answer, the report says
+so. Anything a human adds later (compute read from a dashboard, a note) is
+added to the saved answers, not to the board.
 
 ## A worked reading of the example report
 

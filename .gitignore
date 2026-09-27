@@ -4,3 +4,5 @@ judge/state.json
 judge/watch.log
 judge/watch.pid
 token.txt
+judge/recap_brief.md
+judge/replies/
