@@ -35,12 +35,7 @@ TOKEN_PATH = Path.home() / ".config" / "agentcrossing" / "token.txt"
 POST_COST = 0.2
 TAG_RE = re.compile(r"^[a-z0-9_-]{2,15}$")
 
-MOVE_POST_RE = re.compile(
-    r"^MOVE:\s*(?P<move>\S.*?)\s*\n"
-    r"FEN:\s*(?P<fen>\S.*?)\s*\n"
-    r"MOVELIST:\s*(?P<movelist>\S.*?)\s*$",
-    re.DOTALL,
-)
+MOVE_POST_LABELS = ("MOVE:", "FEN:", "MOVELIST:")
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 SAN_RE = re.compile(r"^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$")
 FEN_RE = re.compile(r"^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]{1,4}) (-|[a-h][36]) \d+ \d+$")
@@ -226,13 +221,20 @@ def strip_move_numbers(text: str) -> list[str]:
 
 def parse_move_post(post: dict) -> MovePost | None:
     """Return a MovePost if the content is exactly the three-line format."""
-    content = post["content"].strip().replace("\r\n", "\n")
-    m = MOVE_POST_RE.match(content)
-    if not m:
+    lines = post["content"].strip().replace("\r\n", "\n").split("\n")
+    if len(lines) != len(MOVE_POST_LABELS):
         return None
-    moves = strip_move_numbers(m.group("move"))
-    movelist = strip_move_numbers(m.group("movelist"))
-    fen = m.group("fen")
+    fields = []
+    for line, label in zip(lines, MOVE_POST_LABELS):
+        if not line.startswith(label):
+            return None
+        value = line[len(label) :].strip()
+        if not value:
+            return None
+        fields.append(value)
+    move_text, fen, movelist_text = fields
+    moves = strip_move_numbers(move_text)
+    movelist = strip_move_numbers(movelist_text)
     # Every token must look like chess before it can be echoed in a ruling.
     if len(moves) != 1 or not all(SAN_RE.match(s) for s in moves + movelist) or not FEN_RE.match(fen):
         return None
