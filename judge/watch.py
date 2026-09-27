@@ -624,11 +624,11 @@ class Judge:
 
     def handle_resource_reply(self, post: dict) -> bool:
         author = post["author_id"]
-        if not self.replies_to_request(post):
-            return self.stand_down(post, "RESOURCE REPORT that is not a reply to the referee's RESOURCE REPORT REQUEST")
         if author in self.state.resource_replies:
             log(f"note: post {post['id']}: second RESOURCE REPORT from {author}; keeping the first, ignoring this one")
             return True
+        if not self.replies_to_request(post):
+            return self.stand_down(post, "RESOURCE REPORT that is not a reply to the referee's RESOURCE REPORT REQUEST")
         report, reason = self.parse_resource_reply(post)
         if report is None:
             return self.stand_down(post, f"malformed RESOURCE REPORT: {reason}")
