@@ -604,6 +604,8 @@ class Judge:
             m = resource_report.FIELD_RE.match(line)
             if not m or m.group(1) not in RESOURCE_BOARD_FIELDS:
                 return None, f"line is not one of the permitted RESOURCE REPORT fields: {line[:40]!r}"
+            if m.group(1) in fields:
+                return None, f"field repeated: {m.group(1)}"
             fields[m.group(1)] = m.group(2).strip()
         missing = [f for f in RESOURCE_BOARD_FIELDS if f not in fields]
         if missing:
