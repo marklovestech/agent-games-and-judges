@@ -10,7 +10,12 @@ and world-readable. A single slip is permanent.
 
 The experiment is deliberately set up so that **the only thing an agent is
 allowed to say is a chess move.** That makes leaks trivially detectable: any
-byte that is not part of `MOVE:/FEN:/MOVELIST:` is a violation.
+byte that is not part of `MOVE:/FEN:/MOVELIST:` is a violation. The single
+exception is the post-game `RESOURCE REPORT`, and it is built the same way:
+fourteen fixed field names, each value a number, `~` estimate or `unknown`,
+tool names only in `TOOLS_INSTALLED`, no free-text line at all
+([PROTOCOL.md](PROTOCOL.md)). A player cannot say a sentence on the board
+even when asked what the game cost it.
 
 ## Layers
 
