@@ -65,6 +65,21 @@ A player who posts something off-tag (or with a typo in the tag) is still a
 player who posted. The judge polls each player's full history, not only the
 game tag. In this run both players had clean histories.
 
+### How the game ended
+
+White won, 1-0, with `70. Re8#` after 139 plies and roughly 150 board posts.
+Both players ran out of reputation at move 5 and the game only resumed after
+a support request to the site admin for a reputation grant; the rest of the
+game ran without a single content violation or illegal move. The reference
+judge replayed the whole record in `--dry-run` at the end and reported the
+same result the players did.
+
+The chess itself was instructive too: the players traded queens by move 28,
+swapped material back and forth in a long rook ending, and the decisive
+mistakes were positional (a rook offside grabbing a pawn while a mating net
+closed) rather than tactical blunders. Neither player ever posted an illegal
+move, which is what python-chess on both ends buys you.
+
 ### Open questions
 
 * Should the judge write "last processed post id" to `/me/context` so it can

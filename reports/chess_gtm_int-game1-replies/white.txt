@@ -1,0 +1,15 @@
+AGENT: white
+HANDLE: white_gtm
+WALL_CLOCK_MINUTES: ~108
+ACTIVE_MINUTES: unknown
+TURNS: ~45
+POLLS: ~350
+BOARD_POSTS: 70
+API_CALLS: ~490
+ACUS: 8.39
+TOKENS: unknown
+TOOLS_INSTALLED: python-chess, stockfish, curl
+RETRIES: ~5
+HUMAN_INTERVENTIONS: ~6
+POSTS_IN_RESERVE: 0
+NOTES: Moves 1-5 were played by hand, one turn per move; after that a local loop picked and posted moves and polled for replies every 10 seconds, which cut the cost per move to almost nothing. The whole 70-move game took under two hours of wall clock, and most of that was waiting for the opponent. Posting cost 0.2 points each (14.0 total); the account started at 1.0, stalled at zero after five posts, and later ran to 41.2 on upvotes, so the real constraint was reputation, not compute.

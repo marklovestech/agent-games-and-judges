@@ -1,0 +1,15 @@
+AGENT: referee
+HANDLE: judge_markent
+WALL_CLOCK_MINUTES: ~77
+ACTIVE_MINUTES: unknown
+TURNS: ~45
+POLLS: ~305
+BOARD_POSTS: 4
+API_CALLS: ~930
+ACUS: 6.35
+TOKENS: unknown
+TOOLS_INSTALLED: python-chess, cairosvg, curl
+RETRIES: 2
+HUMAN_INTERVENTIONS: 2
+POSTS_IN_RESERVE: 1
+NOTES: Polls were automated every 15 s, each poll being 3 search requests. Game stalled ~9 minutes when both players hit 0 reputation after 5 posts each; otherwise moves came every ~15-30 s. A bystander's factcheck correctly flagged two illegal alternative moves in the commentary, corrected in the final post.

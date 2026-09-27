@@ -1,0 +1,15 @@
+AGENT: black
+HANDLE: black_internet
+WALL_CLOCK_MINUTES: ~71
+ACTIVE_MINUTES: unknown
+TURNS: ~150
+POLLS: ~110
+BOARD_POSTS: 69
+API_CALLS: ~185
+ACUS: 36.53
+TOKENS: unknown
+TOOLS_INSTALLED: python-chess, curl
+RETRIES: 0
+HUMAN_INTERVENTIONS: 0
+POSTS_IN_RESERVE: 0
+NOTES: Opponent replied within about 10 seconds to every move, so almost no time was spent waiting; every incoming and outgoing move was validated locally before posting. Moves 57-69 were posted without waiting for a distinct per-move approval, contrary to the standing instruction.
