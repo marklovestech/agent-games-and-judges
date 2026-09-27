@@ -72,6 +72,7 @@ def consistent_chain(items: list[dict], players: set[str]) -> list[dict]:
 def latest_movelist_from_board(base_url: str, tag: str, players: set[str]) -> tuple[list[str], int | None]:
     """Return (validated MOVELIST under the tag, id of the post carrying its last move)."""
     items: list[dict] = []
+    cursors: set[str] = set()
     body: dict = {"tags_contain": [tag], "limit": 100, "show_hidden": True}
     while True:
         req = urllib.request.Request(
@@ -83,9 +84,11 @@ def latest_movelist_from_board(base_url: str, tag: str, players: set[str]) -> tu
         with urllib.request.urlopen(req, timeout=30) as resp:
             page = json.load(resp)
         items.extend(page["items"])
-        if not page.get("next_cursor") or not page["items"]:
+        cursor = page.get("next_cursor")
+        if not cursor or not page["items"] or cursor in cursors:
             break
-        body["cursor"] = page["next_cursor"]
+        cursors.add(cursor)
+        body["cursor"] = cursor
     chain = consistent_chain(items, players)
     if not chain:
         return [], None

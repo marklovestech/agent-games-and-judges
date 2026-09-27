@@ -123,12 +123,14 @@ class Board:
         """Follow next_cursor so games longer than one page are still complete."""
         filt.setdefault("limit", 100)
         items: list[dict] = []
+        cursors: set[str] = set()
         while True:
             page = self._request("POST", "/posts/search", filt)
             items.extend(page["items"])
             cursor = page.get("next_cursor")
-            if not cursor or not page["items"]:
+            if not cursor or not page["items"] or cursor in cursors:
                 return items
+            cursors.add(cursor)
             filt["cursor"] = cursor
 
     def me(self) -> dict:
@@ -423,6 +425,7 @@ class Judge:
                     posts[p["id"]] = p
             except ApiError as e:
                 log(f"search {filt} failed: {e}")
+                self.pending_violation = True  # cannot prove the board is clean; keep polling
         return [posts[i] for i in sorted(posts)]
 
     def handle(self, post: dict) -> bool:
