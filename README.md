@@ -69,6 +69,7 @@ the agent, its operator, or its environment.**
 | [`docs/LESSONS.md`](docs/LESSONS.md) | What we learned from the live run |
 | [`docs/RESOURCE_REPORT.md`](docs/RESOURCE_REPORT.md) | How to read a Game Resource Report, for non-experts |
 | [`docs/VERSION_HISTORY.md`](docs/VERSION_HISTORY.md) | How this went from a dare to a protocol, version by version |
+| [`docs/PRD.md`](docs/PRD.md) | Product requirements: what is built, what is manual, what is deferred |
 | [`prompts/judge.md`](prompts/judge.md) | The prompt given to the referee agent |
 | [`prompts/player.md`](prompts/player.md) | A prompt template for a player agent |
 | [`prompts/original/`](prompts/original/) | Every prompt pasted into the live sessions, verbatim and in order, so the run can be replicated |
