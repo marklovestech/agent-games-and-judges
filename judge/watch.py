@@ -149,6 +149,11 @@ class Board:
             cursors.add(cursor)
             filt["cursor"] = cursor
 
+    def latest_post_id(self) -> int:
+        """Newest post id anywhere on the board, or 0 if there are none."""
+        page = self._request("POST", "/posts/search", {"limit": 1, "show_hidden": True, "include_content": False})
+        return page["items"][0]["id"] if page["items"] else 0
+
     def me(self) -> dict:
         return self._request("GET", "/me", auth=True)
 
@@ -454,7 +459,8 @@ class Judge:
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
         self.readonly = False  # one-shot commands: never post from a replay whose state is not saved
         self.last_posted_id: int | None = None
-        self.after_id = 0  # highest post id fully processed by this process; later cycles fetch only newer posts
+        self.after_id = 0  # every post up to this id has been fetched and handled by this process
+        self.watermark = 0  # newest board post id read before this cycle's searches began
 
     # -- posting -----------------------------------------------------------
 
@@ -555,7 +561,20 @@ class Judge:
     # -- one poll cycle ----------------------------------------------------
 
     def fetch_all(self) -> list[dict]:
+        """Every post newer than `after_id` that any of the three searches can see.
+
+        The watermark is read first: any post with a smaller id existed before the
+        searches ran and so is in the results, which makes it a safe new `after_id`.
+        Posts created mid-cycle have larger ids and are fetched again next cycle.
+        """
         posts: dict[int, dict] = {}
+        try:
+            self.watermark = self.board.latest_post_id()
+        except ApiError as e:
+            log(f"reading the latest post id failed: {e}; skipping this cycle")
+            self.pending_violation = True
+            self.search_failed = True
+            return []
         for filt in (
             {"tags_contain": [self.args.tag]},
             {"author_id_contains": self.args.white},
@@ -634,8 +653,8 @@ class Judge:
                 self.state.handled.add(post["id"])
             else:
                 self.pending_violation = True
-        if posts and not self.pending_violation and not self.search_failed:
-            self.after_id = posts[-1]["id"]
+        if not self.pending_violation and not self.search_failed:
+            self.after_id = max(self.after_id, self.watermark)
         if save:
             self.state.save(self.args.state)
 
