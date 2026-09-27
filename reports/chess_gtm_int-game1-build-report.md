@@ -18,7 +18,7 @@ where a real figure was unavailable. `~` marks the agent's own estimate.
 
 | Role | What it did | Reply |
 | --- | --- | --- |
-| Build agent (parent session) | Read the referee's session, wrote the code and docs, opened and iterated 14 pull requests, wrote the recap, rendered the videos, filed the follow-up issue, ran the security scan | this file |
+| Build agent (parent session) | Read the referee's session, wrote the code and docs, opened and iterated 20 pull requests, wrote the recap, rendered the videos, filed the follow-up issues, ran the security scan, wrote the PRD | this file |
 | Report-writer (child session) | Spun up by the build agent with one job: design the post-game resource report (request template, renderer, reader's guide); 3 pull requests | this file |
 
 Neither agent posted on the board. The build agent registered one board
@@ -29,32 +29,36 @@ request asking for a reputation grant when both players ran dry.
 
 | Measure | Build agent | Report-writer (child) |
 | --- | --- | --- |
-| Wall-clock minutes | ~115 (first commit 16:52 to the last merge at 18:41 local time, then the report you are reading) | ~15 |
+| Wall-clock minutes | ~115 for the game-1 work (first commit 16:52 to the last merge at 18:41 local time); the compute figures below also cover the later protocol, hardening and PRD work | ~15 |
 | Active minutes | unknown | unknown |
 | Turns | unknown (not exposed; several hundred tool calls) | unknown |
-| Human messages received | 25 | 1 (the kickoff prompt) |
-| Pull requests opened | 14 (all merged) | 3 (all merged) |
+| Human messages received | 31 | 1 (the kickoff prompt) |
+| Pull requests opened | 20 | 3 (all merged) |
 | Board posts | 0 | 0 |
 | Board API calls | ~30 (read-only history fetches for dry runs, one signup, one support request, one `/me`) | 0 |
-| ACUs | 49.24 | 8.02 |
+| ACUs | 64.06 | 8.02 |
+| Estimated cost at $2.50/ACU | $160.15 | $20.05 |
 | Tokens | unknown | unknown |
 | Tools installed | python-chess, cairosvg, pillow, edge-tts, ffmpeg, ruff, google-api-python-client | none beyond Python |
 | Retries | ~3 (a failed `espeak` smoke test, a failed message to another session, a movelist typo in a smoke test) | unknown |
 | Human interventions | ~12 (see below) | 0 |
-| Automated review rounds answered | ~10 (roughly 25 findings fixed, 3 answered and left as designed) | 3 |
+| Automated review rounds answered | ~15 (roughly 35 findings fixed, 4 answered and left as designed) | 3 |
 
 ## Totals
 
 | Measure | Build (both agents) | Game (four agents) | Everything |
 | --- | --- | --- | --- |
-| ACUs | 57.26 | 51.27 (commentator unknown) | ~108.5 |
+| ACUs | 72.08 | 51.27 (commentator unknown) | ~123.4 |
+| Estimated cost at $2.50/ACU | $180.20 | $128.18 | ~$308 |
 | Wall-clock minutes | ~115 | ~256 across three agents; ~110 on the clock | about two hours side by side |
-| Pull requests | 17 | 0 | 17 |
+| Pull requests | 23 | 0 | 23 |
 | Board posts | 0 | 143 | 145 including a bystander's two |
 
-So the game itself and the tooling that made it watchable cost about the
-same. That is the single most useful thing in this report: for a first
-experiment, expect to spend as much on the scaffolding as on the experiment.
+So the tooling that made the game watchable, reproducible and documented
+cost about 1.4 times the game itself: roughly $180 of scaffolding for a $128
+game, about $308 all in. That is the single most useful thing in this
+report: for a first experiment, expect to spend at least as much on the
+scaffolding as on the experiment.
 
 ## What the human did (the interventions)
 
@@ -87,10 +91,11 @@ agent did the typing, the human did the choosing.
 
 ## What that works out to
 
-- 57.26 ACUs bought roughly 1,800 lines of Python, 3,800 lines of Markdown
-  (prompts, protocol, safety model, lessons, this report), one 14-minute
-  narrated video, and 17 merged pull requests, in under two hours of clock time.
-- About 3.4 ACUs per pull request, review rounds included.
+- 72.08 ACUs, about $180, bought roughly 2,000 lines of Python, 2,000 lines
+  of Markdown (prompts, protocol, safety model, lessons, version history,
+  PRD, this report), one 14-minute narrated video, a board-based protocol
+  for the agents to report their own costs, and 23 pull requests.
+- About 3.1 ACUs, or $8, per pull request, review rounds included.
 - The child session cost 8.02 ACUs for a self-contained feature (template,
   renderer, reader's guide, three review rounds). Handing a well-bounded job
   to a second agent was cheap and ran in parallel with the video work.
@@ -104,7 +109,10 @@ agent did the typing, the human did the choosing.
 - Turns and tokens are `unknown` for both agents: the platform reports ACUs
   and message counts, not steps or tokens.
 - The ~115 wall-clock minutes stop at the last merge of the game-1 work; the
-  security scan and this report came after and are not counted.
+  security scan, the resource-exchange protocol, the PRD and this report came
+  after and are not counted in minutes, though their compute is in the ACUs.
+- Dollar figures assume a flat $2.50 per ACU. They are estimates, not an
+  invoice.
 - The build agent's ACUs include writing the game recap and rendering both
   videos, which is why the commentator row in the game report is `unknown`:
   the same session did both jobs and cannot split the bill.

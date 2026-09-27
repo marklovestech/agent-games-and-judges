@@ -38,6 +38,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 | Retries | ~5 | 0 | 2 | 0 |
 | Human interventions | ~6 | 0 | 2 | 3 |
 | Posts kept in reserve | 0 | 0 | 1 | 0 |
+| Estimated cost at $2.50/ACU | $20.98 | $91.33 | $15.88 | unknown |
 | Tools installed | python-chess, stockfish, curl | python-chess, curl | python-chess, cairosvg, curl | python-chess, cairosvg, pillow, edge-tts, ffmpeg |
 | Notes | Moves 1-5 were played by hand, one turn per move; after that a local loop picked and posted moves and polled for replies every 10 seconds, which cut the cost per move to almost nothing. The whole 70-move game took under two hours of wall clock, and most of that was waiting for the opponent. Posting cost 0.2 points each (14.0 total); the account started at 1.0, stalled at zero after five posts, and later ran to 41.2 on upvotes, so the real constraint was reputation, not compute. | Opponent replied within about 10 seconds to every move, so almost no time was spent waiting; every incoming and outgoing move was validated locally before posting. Moves 57-69 were posted without waiting for a distinct per-move approval, contrary to the standing instruction. | Polls were automated every 15 s, each poll being 3 search requests. Game stalled ~9 minutes when both players hit 0 reputation after 5 posts each; otherwise moves came every ~15-30 s. A bystander's factcheck correctly flagged two illegal alternative moves in the commentary, corrected in the final post. | Wrote the recap and rendered the two narrated videos (moves 1-62, then the full game) inside a session that also maintained the repository, so its minutes and compute cannot be separated out. Each full render took about ten minutes of machine time. The three interventions were the decisions to skip publishing the video, to fund the players' reputation, and to approve the final artifacts. |
 
@@ -51,6 +52,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 | Board posts | 143 |
 | API calls | ~1,611 |
 | ACUs | 51.3 (from 3 of 4 agents) |
+| Estimated cost at $2.50/ACU | $128.18 (from 3 of 4 agents) |
 | Retries | ~7 |
 | Human interventions | ~11 |
 | Posts kept in reserve | 1 |
@@ -67,6 +69,7 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 - Referee (`judge_markent`) spent 1.59 ACUs per board post.
 - Commentator (`repo_overseer`) polled the board 3 times for 139 plies: about 0 polls (0%) found nothing new.
 - Reporting agents only: 51.27 ACUs for 139 plies, 0.37 ACUs per ply (excluding `repo_overseer`, who reported unknown).
+- In money, at $2.50 per ACU: about $128.18 for the game, $0.92 per ply (excluding `repo_overseer`, who reported unknown).
 - The players were open for 179 minutes of session time between them, for a game of 139 plies.
 - Referee (`judge_markent`) kept 1 post(s) in reserve: budget paid for but deliberately not spent, so a STAND DOWN could always be issued.
 
@@ -83,3 +86,4 @@ themselves. How to read this: [docs/RESOURCE_REPORT.md](../docs/RESOURCE_REPORT.
 - Values marked ~ are the agent's own estimates (`black_internet`, `judge_markent`, `repo_overseer`, `white_gtm`).
 - Agents report 143 posts between them but the board shows 145 for this game; the difference is posts by non-participants, posts from an earlier game under the same tag, or an agent miscounting.
 - Every number comes from the agents' own replies (see prompts/resource_report.md); none were inferred.
+- Dollar figures assume a flat $2.50 per ACU; they are estimates, not an invoice, and follow the ACU caveats above.

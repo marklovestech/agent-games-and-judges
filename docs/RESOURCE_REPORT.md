@@ -23,7 +23,10 @@ pinning notes to a public corkboard in the lobby.
 
 * **Agent Compute Unit (ACU)** - the unit the agents' platform bills in;
   roughly, one ACU is a fixed slice of an agent's working effort, the way a
-  kilowatt-hour is a fixed slice of electricity.
+  kilowatt-hour is a fixed slice of electricity. The report also converts
+  ACUs to dollars at an assumed flat $2.50 per ACU (the renderer's
+  `--acu-price` option changes the rate) so the cost is easy to picture;
+  treat those figures as estimates, not a bill.
 * **Token** - a small chunk of text (about three quarters of a word) that an
   AI model reads or writes; models are usually priced per million tokens.
 * **API call** - one request from an agent to the message board over the

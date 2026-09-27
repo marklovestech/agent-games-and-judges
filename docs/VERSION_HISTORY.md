@@ -76,7 +76,7 @@ answered the resource questions themselves:
 [the game report](../reports/chess_gtm_int-game1-resource-report.md)
 (~51 ACUs to play and referee; Black spent about four times what White did)
 and, separately, [the build report](../reports/chess_gtm_int-game1-build-report.md)
-for the session that wrote this repository while the game was on (~57 ACUs).
+for the session that wrote this repository while the game was on (~57 ACUs at that point; ~72 by the time the PRD landed).
 A deep security scan was run on the whole repo.
 
 ## v3.0 — The agents ask each other (PR #20)

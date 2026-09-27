@@ -26,6 +26,7 @@ from pathlib import Path
 import chess
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
+ACU_PRICE_USD = 2.50  # list price assumed for the dollar estimates; override with --acu-price
 MOVE_NUMBER_RE = re.compile(r"^\d+\.(\.\.)?$")
 FIELD_RE = re.compile(r"^([A-Z_]+):\s*(.*)$")
 NUMBER_RE = re.compile(r"^~?\s*(\d+(?:\.\d+)?)$")
@@ -243,17 +244,29 @@ def fmt(value: float | None, unit: str = "", digits: int = 1) -> str:
     return f"{value:,.{digits}f}{unit}"
 
 
-def per_agent_table(agents: list[AgentReport]) -> list[str]:
+def usd(acus: float | None, price: float, estimate: bool = False) -> str:
+    if acus is None or price <= 0:
+        return "unknown"
+    return f"{'~' if estimate else ''}${acus * price:,.2f}"
+
+
+def per_agent_table(agents: list[AgentReport], price: float) -> list[str]:
     header = "| Measure | " + " | ".join(f"{a.role.title()} (`{a.handle}`)" for a in agents) + " |"
     lines = [header, "| --- | " + " | ".join("---" for _ in agents) + " |"]
     for key, label in NUMERIC_FIELDS:
         lines.append(f"| {label} | " + " | ".join(a.metric(key).text() for a in agents) + " |")
+    if price > 0:
+        lines.append(
+            f"| Estimated cost at ${price:.2f}/ACU | "
+            + " | ".join(usd(a.metric("ACUS").value, price, a.metric("ACUS").estimate) for a in agents)
+            + " |"
+        )
     for key, label in TEXT_FIELDS:
         lines.append(f"| {label} | " + " | ".join((a.text[key] or "none").replace("|", "/") for a in agents) + " |")
     return lines
 
 
-def derived_lines(game: GameFacts, agents: list[AgentReport]) -> list[str]:
+def derived_lines(game: GameFacts, agents: list[AgentReport], price: float) -> list[str]:
     lines = []
     plies = game.plies
     players = [a for a in agents if a.role in ("white", "black")]
@@ -287,6 +300,11 @@ def derived_lines(game: GameFacts, agents: list[AgentReport]) -> list[str]:
             f"- {scope}: {tilde}{fmt(acus_total.value, ' ACUs', 2)} for {plies} plies, "
             f"{tilde}{fmt(acus_total.value / plies, ' ACUs', 2)} per ply{note}."
         )
+        if price > 0:
+            lines.append(
+                f"- In money, at ${price:.2f} per ACU: about {usd(acus_total.value, price, acus_total.estimate)} for the game, "
+                f"{usd(acus_total.value / plies, price, acus_total.estimate)} per ply{note}."
+            )
     wall = [a.metric("WALL_CLOCK_MINUTES").value for a in players]
     if players and all(w is not None for w in wall):
         lines.append(
@@ -328,7 +346,7 @@ def caveats(game: GameFacts, agents: list[AgentReport], extra: list[str]) -> lis
     return lines
 
 
-def render(game: GameFacts, agents: list[AgentReport], extra_caveats: list[str]) -> str:
+def render(game: GameFacts, agents: list[AgentReport], extra_caveats: list[str], price: float = ACU_PRICE_USD) -> str:
     board = replay(game.moves)
     totals = []
     for key, label in NUMERIC_FIELDS:
@@ -337,6 +355,8 @@ def render(game: GameFacts, agents: list[AgentReport], extra_caveats: list[str])
             continue
         suffix = f" (from {len(agents) - len(missing)} of {len(agents)} agents)" if missing else ""
         totals.append(f"| {label} | {value.text()}{suffix} |")
+        if key == "ACUS" and price > 0:
+            totals.append(f"| Estimated cost at ${price:.2f}/ACU | {usd(value.value, price, value.estimate)}{suffix} |")
     if absent_roles(agents):
         totals.append(f"| Not included | no reply from the {', '.join(absent_roles(agents))} |")
     lines = [
@@ -363,13 +383,18 @@ def render(game: GameFacts, agents: list[AgentReport], extra_caveats: list[str])
     ]
     lines += [f"| {a.role.title()} | `{a.handle}` | `{Path(a.source).name}` |" for a in agents]
     lines += ["", "## What each agent used", ""]
-    lines += per_agent_table(agents)
+    lines += per_agent_table(agents, price)
     lines += ["", "## Totals", "", "| Measure | All agents |", "| --- | --- |"]
     lines += totals or ["| (nothing reported) | |"]
     lines += ["", "## What that works out to", ""]
-    lines += derived_lines(game, agents)
+    lines += derived_lines(game, agents, price)
     lines += ["", "## Caveats", ""]
     lines += [f"- {c}" for c in caveats(game, agents, extra_caveats)]
+    if price > 0:
+        lines.append(
+            f"- Dollar figures assume a flat ${price:.2f} per ACU; they are estimates, not an invoice, and follow the ACU"
+            " caveats above."
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -465,6 +490,12 @@ def main() -> int:
         help="posts on the board for this game only: under the tag, after the previous NEW GAME APPROVED if any",
     )
     ap.add_argument("--caveat", action="append", default=[], help="extra caveat line (repeatable), e.g. redactions")
+    ap.add_argument(
+        "--acu-price",
+        type=float,
+        default=ACU_PRICE_USD,
+        help=f"dollars per ACU for the cost estimates (default {ACU_PRICE_USD:.2f}; 0 leaves money out)",
+    )
     ap.add_argument("--out", type=Path, help="output path; default reports/<game>-resource-report.md")
     ap.add_argument(
         "--example", action="store_true", help="write reports/example-resource-report.md from made-up numbers"
@@ -497,7 +528,7 @@ def main() -> int:
     game = GameFacts(args.game, moves, result_of(board, args.result or brief_result), args.board_posts)
     out = args.out or REPORTS_DIR / f"{args.game}-resource-report.md"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(game, agents, args.caveat))
+    out.write_text(render(game, agents, args.caveat, args.acu_price))
     print(f"report written to {out}")
     return 0
 
