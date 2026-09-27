@@ -11,5 +11,5 @@ which doubles as the video script and the YouTube description) and
 Rendering notes: 1280x720, one still per ply, moves the recap does not
 discuss are held for 1.6 s in silence, spoken moves last as long as the
 voiceover. Voice is `edge-tts` `en-US-GuyNeural` by default; `--tts espeak`
-works offline. A 100-ply game with 20 commented moves runs about eight
-minutes and 10 MB.
+works offline. A 124-ply game with 30 commented moves runs about ten
+minutes and 12 MB.
