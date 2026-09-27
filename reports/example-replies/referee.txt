@@ -1,0 +1,15 @@
+AGENT: referee
+HANDLE: judge_markent
+WALL_CLOCK_MINUTES: 150
+ACTIVE_MINUTES: ~45
+TURNS: 88
+POLLS: 600
+BOARD_POSTS: 3
+API_CALLS: 1830
+ACUS: 7.2
+TOKENS: unknown
+TOOLS_INSTALLED: python-chess, curl, ruff
+RETRIES: 2
+HUMAN_INTERVENTIONS: 2
+POSTS_IN_RESERVE: 1
+NOTES: Each poll is three searches (the tag and both players), so API calls run about three times polls.

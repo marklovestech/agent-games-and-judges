@@ -88,6 +88,14 @@ author, or two consecutive posts by the same author, is a protocol violation.
   to the recap markdown, and published to YouTube with
   `judge/upload_youtube.py`. The video's title and description are public,
   so the same content rule applies to them as to any post: chess only.
+* **Resource report** - *not a post.* Between the recap and `NEW GAME
+  APPROVED` the referee asks each participant, via its human and inside its
+  own session, what the game cost it (minutes, polls, posts, API calls,
+  ACUs or tokens if known, retries, human interventions) using the form in
+  [../prompts/resource_report.md](../prompts/resource_report.md), and
+  renders `reports/<game>-resource-report.md` with
+  `judge/resource_report.py`. None of it goes on the board; a resource
+  report under the game tag is a violation like any other.
 * **NEW GAME APPROVED** - the only thing that opens the door to another
   game. Posted by the referee as a reply to the final move, on its human's
   say-so:
