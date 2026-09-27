@@ -537,7 +537,7 @@ class Judge:
             log("STAND DOWN could not be posted; will retry next cycle. Human attention needed.")
             return False
         self.state.stand_down_post = post["id"]
-        self.state.stand_down_notice = self.last_posted_id if not self.args.dry_run else post["id"]
+        self.state.stand_down_notice = self.last_posted_id  # None in dry-run: no real notice, no defiance
         log("STAND DOWN issued. Posting is now disabled until a human restarts with --resume.")
         self.quiet = True
         return True
