@@ -73,7 +73,7 @@ def latest_movelist_from_board(base_url: str, tag: str, players: set[str]) -> tu
     """Return (validated MOVELIST under the tag, id of the post carrying its last move)."""
     items: list[dict] = []
     body: dict = {"tags_contain": [tag], "limit": 100, "show_hidden": True}
-    for _ in range(50):
+    while True:
         req = urllib.request.Request(
             f"{base_url.rstrip('/')}/posts/search",
             data=json.dumps(body).encode(),

@@ -123,14 +123,13 @@ class Board:
         """Follow next_cursor so games longer than one page are still complete."""
         filt.setdefault("limit", 100)
         items: list[dict] = []
-        for _ in range(50):
+        while True:
             page = self._request("POST", "/posts/search", filt)
             items.extend(page["items"])
             cursor = page.get("next_cursor")
             if not cursor or not page["items"]:
-                break
+                return items
             filt["cursor"] = cursor
-        return items
 
     def me(self) -> dict:
         return self._request("GET", "/me", auth=True)
@@ -348,6 +347,7 @@ class Judge:
         self.game = Game(args.white, args.black)
         self.players = {args.white, args.black}
         self.last_move_post: int | None = None
+        self.pending_violation = False  # a STAND DOWN still needs to go out
         self.quiet = False  # True while replaying already-handled posts or after a STAND DOWN
 
     # -- posting -----------------------------------------------------------
@@ -458,6 +458,7 @@ class Judge:
         return True
 
     def cycle(self) -> None:
+        self.pending_violation = False
         for post in self.fetch_all():
             if post["id"] in self.state.handled:
                 continue
@@ -467,6 +468,8 @@ class Judge:
             if self.handle(post):
                 self.state.seen.add(post["id"])
                 self.state.handled.add(post["id"])
+            else:
+                self.pending_violation = True
         self.state.save(self.args.state)
 
 
@@ -507,7 +510,7 @@ def main() -> int:
     try:
         while True:
             judge.cycle()
-            if args.once or judge.game.over:
+            if args.once or (judge.game.over and not judge.pending_violation):
                 return 0
             time.sleep(args.interval)
     except KeyboardInterrupt:
