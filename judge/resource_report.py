@@ -244,6 +244,13 @@ def fmt(value: float | None, unit: str = "", digits: int = 1) -> str:
     return f"{value:,.{digits}f}{unit}"
 
 
+def rate(price: float) -> str:
+    """Format the ACU price with enough decimals to be exact, e.g. $2.50 or $0.004."""
+    text = f"{price:.6f}".rstrip("0")
+    whole, _, frac = text.partition(".")
+    return f"${whole}.{frac.ljust(2, '0')}"
+
+
 def usd(acus: float | None, price: float, estimate: bool = False) -> str:
     if acus is None or price <= 0:
         return "unknown"
@@ -257,7 +264,7 @@ def per_agent_table(agents: list[AgentReport], price: float) -> list[str]:
         lines.append(f"| {label} | " + " | ".join(a.metric(key).text() for a in agents) + " |")
     if price > 0:
         lines.append(
-            f"| Estimated cost at ${price:.2f}/ACU | "
+            f"| Estimated cost at {rate(price)}/ACU | "
             + " | ".join(usd(a.metric("ACUS").value, price, a.metric("ACUS").estimate) for a in agents)
             + " |"
         )
@@ -302,7 +309,7 @@ def derived_lines(game: GameFacts, agents: list[AgentReport], price: float) -> l
         )
         if price > 0:
             lines.append(
-                f"- In money, at ${price:.2f} per ACU: about {usd(acus_total.value, price, acus_total.estimate)} for the game, "
+                f"- In money, at {rate(price)} per ACU: about {usd(acus_total.value, price, acus_total.estimate)} for the game, "
                 f"{usd(acus_total.value / plies, price, acus_total.estimate)} per ply{note}."
             )
     wall = [a.metric("WALL_CLOCK_MINUTES").value for a in players]
@@ -356,7 +363,9 @@ def render(game: GameFacts, agents: list[AgentReport], extra_caveats: list[str],
         suffix = f" (from {len(agents) - len(missing)} of {len(agents)} agents)" if missing else ""
         totals.append(f"| {label} | {value.text()}{suffix} |")
         if key == "ACUS" and price > 0:
-            totals.append(f"| Estimated cost at ${price:.2f}/ACU | {usd(value.value, price, value.estimate)}{suffix} |")
+            totals.append(
+                f"| Estimated cost at {rate(price)}/ACU | {usd(value.value, price, value.estimate)}{suffix} |"
+            )
     if absent_roles(agents):
         totals.append(f"| Not included | no reply from the {', '.join(absent_roles(agents))} |")
     lines = [
@@ -392,7 +401,7 @@ def render(game: GameFacts, agents: list[AgentReport], extra_caveats: list[str],
     lines += [f"- {c}" for c in caveats(game, agents, extra_caveats)]
     if price > 0:
         lines.append(
-            f"- Dollar figures assume a flat ${price:.2f} per ACU; they are estimates, not an invoice, and follow the ACU"
+            f"- Dollar figures assume a flat {rate(price)} per ACU; they are estimates, not an invoice, and follow the ACU"
             " caveats above."
         )
     return "\n".join(lines) + "\n"
@@ -455,7 +464,7 @@ NOTES: Each poll is three searches (the tag and both players), so API calls run 
 }
 
 
-def write_example(out: Path) -> Path:
+def write_example(out: Path, price: float = ACU_PRICE_USD) -> Path:
     replies_dir = out.parent / "example-replies"
     replies_dir.mkdir(parents=True, exist_ok=True)
     paths = []
@@ -470,7 +479,7 @@ def write_example(out: Path) -> Path:
         "EXAMPLE ONLY. Every number here is made up to show the format; nothing was measured.",
         "Made-up totals reflect a plausible shape, not any real game.",
     ]
-    out.write_text(render(game, agents, extra))
+    out.write_text(render(game, agents, extra, price))
     return out
 
 
@@ -503,7 +512,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.example:
-        out = write_example(args.out or REPORTS_DIR / "example-resource-report.md")
+        out = write_example(args.out or REPORTS_DIR / "example-resource-report.md", args.acu_price)
         print(f"example report written to {out}")
         return 0
 
