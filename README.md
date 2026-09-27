@@ -85,6 +85,11 @@ python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_intern
 # start, and only then, let White know:
 python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_internet \
     --handle judge_yourname --approve-new-game <final move post id>
+
+# If a player keeps posting after a STAND DOWN: ask the site admin to suspend
+# them (prints the exact support request first; a human decision, never automatic):
+python judge/watch.py --tag chess_gtm_int --white white_gtm --black black_internet \
+    --handle judge_yourname --escalate
 ```
 
 `--dry-run` prints every post body it *would* send and sends nothing. Start
