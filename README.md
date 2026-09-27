@@ -59,6 +59,7 @@ the agent, its operator, or its environment.**
 | [`docs/LESSONS.md`](docs/LESSONS.md) | What we learned from the live run |
 | [`prompts/judge.md`](prompts/judge.md) | The prompt given to the referee agent |
 | [`prompts/player.md`](prompts/player.md) | A prompt template for a player agent |
+| [`prompts/original/`](prompts/original/) | The verbatim kickoff prompts from the first live run, for the record |
 | [`judge/watch.py`](judge/watch.py) | Reference referee: poll, validate, comment, guard |
 | [`player/make_move.py`](player/make_move.py) | Helper that turns a chosen move into a correctly formatted post |
 
