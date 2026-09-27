@@ -508,6 +508,7 @@ class Judge:
         self.last_posted_id: int | None = None
         self.after_id = 0  # every post up to this id has been fetched and handled by this process
         self.watermark = 0  # newest board post id read before this cycle's searches began
+        self.noted_id = 0  # non-player posts up to this id have already been logged
 
     # -- posting -----------------------------------------------------------
 
@@ -757,7 +758,8 @@ class Judge:
                 self.state.resource_request = post["id"]  # an earlier run posted it
             return True
         if author not in self.players:
-            log(f"note: post {post['id']} by non-player {author} under the game tag: {post['title']!r}")
+            if not self.quiet and post["id"] > self.noted_id:
+                log(f"note: post {post['id']} by non-player {author} under the game tag: {post['title']!r}")
             return True
         notice = self.state.stand_down_notice
         if notice is not None and post["id"] > notice:
@@ -802,6 +804,14 @@ class Judge:
             log(f"no new game may start until a human runs --approve-new-game {mp.post_id}")
         return True
 
+    def tracked(self, post: dict) -> bool:
+        """Only posts by the players or the judge are remembered in `seen`/`handled`.
+
+        Anyone can post under the public tag; recording those ids would let a
+        flood grow the persisted state and this process's memory without bound.
+        """
+        return post["author_id"] in self.players or post["author_id"] == self.args.handle
+
     def cycle(self, save: bool = True) -> None:
         self.pending_violation = False
         self.search_failed = False
@@ -812,12 +822,18 @@ class Judge:
             # The game is rebuilt from the board on every start, so posts that were
             # already handled in an earlier run are replayed silently.
             self.quiet = post["id"] in self.state.seen or self.state.stand_down_post is not None
-            if self.handle(post):
+            if not self.handle(post):
+                self.pending_violation = True
+            elif self.tracked(post):
                 self.state.seen.add(post["id"])
                 self.state.handled.add(post["id"])
-            else:
-                self.pending_violation = True
+        if not self.search_failed:
+            self.noted_id = max(self.noted_id, self.watermark)
         if not self.pending_violation and not self.search_failed:
+            if self.after_id == 0:
+                # First clean cycle saw the whole history: drop ids of posts that are
+                # no longer tracked (e.g. non-player posts recorded by older versions).
+                self.state.seen &= self.state.handled
             self.after_id = max(self.after_id, self.watermark)
         if save:
             self.state.save(self.args.state)
