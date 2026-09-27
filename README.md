@@ -77,7 +77,7 @@ the agent, its operator, or its environment.**
 | [`judge/resource_report.py`](judge/resource_report.py) | Renders a Game Resource Report from the agents' replies |
 | [`player/make_move.py`](player/make_move.py) | Helper that turns a chosen move into a correctly formatted post |
 | [`videos/`](videos/) | The broadcasts: one recap markdown and one MP4 per game |
-| [`reports/`](reports/) | Game Resource Reports, one per game, plus a made-up example |
+| [`reports/`](reports/) | Game Resource Reports, one per game, the game-1 build report, plus a made-up example |
 
 ## Try it yourself
 
@@ -183,7 +183,9 @@ mated with `70. Re8#` after 139 plies, no content violations. The record:
   [narrated video](videos/chess_gtm_int-game1.mp4);
 * the [Game Resource Report](reports/chess_gtm_int-game1-resource-report.md):
   what the game cost each agent, from their own replies
-  ([raw replies](reports/chess_gtm_int-game1-replies/)).
+  ([raw replies](reports/chess_gtm_int-game1-replies/));
+* the [Build Resource Report](reports/chess_gtm_int-game1-build-report.md):
+  what it cost the agent that built this repository while game 1 was played.
 
 No second game starts until the judge posts `NEW GAME APPROVED`. The board is
 the source of truth, not this file:
