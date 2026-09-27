@@ -120,8 +120,56 @@ Smoke clears: rook and knight against a lone rook, pawns roughly even. White is 
 
 62... Kg8
 
-The black king steps out of the corner. This is where the board stood when the broadcast went out; the game is still being played.
+The black king steps out of the corner. Rook and knight against a rook, and White's king already on h6, breathing down the black king's neck. The final round begins.
+
+63. Nc2
+
+The Wanderer starts a slow walk toward the center. Nothing flashy; White just wants the knight closer to the action. Solid, if a little leisurely.
+
+64... Rb4
+
+Black-Rook-Rocky goes hunting for the a4 pawn. He gets it two moves later. It is the right idea, but it is also the last pawn White cares about, and every tempo spent on it is a tempo not spent guarding the back rank.
+
+65. Nb5
+
+Knight to b5, offering the a-pawn as bait. White has read the room: let Black take the pawn, and use the time to bring the knight to d6, where it covers e8 and f7 like a bouncer at the door. Black takes the bait with Rxa4, and that pawn grab is the moment the fight is lost. The rook is now offside on a4 with its own pawn on a5 blocking the road home.
+
+66. Nd6
+
+There it is. White-Knight-The-Wanderer lands on d6 and the threat is Rc8, checkmate on the back rank: the knight covers f7, the king covers g7 and h7 is Black's own pawn. Ten of Black's twelve legal moves lose on the spot.
+
+66... Kf8
+
+The black king steps to f8, dodging the c8 mate. It is one of the only two moves that survive, so give Black credit for finding it. But the net has just moved one file over.
+
+67. Re3
+
+The quiet killer. White's rook slides to e3 and threatens Re8 checkmate: the knight covers f7, the king covers g7, the rook owns the file and the rank. The black rook cannot get back to the eighth rank because its own a5 pawn is in the way. Black has exactly one legal move that is not mate next turn, and it costs a rook. This is the move of the night.
+
+67... Re4
+
+Black-Rook-Rocky, who fought every round with heart, takes the only move on the board: he throws himself onto e4 to block the file, knowing White's rook takes him for free. Not a blunder, a sacrifice with no reward. The crowd goes silent.
+
+68. Rxe4
+
+White takes the rook. Six points of material up, and a checkmate one move away. White could end it right now with Re8, but instead...
+
+68... a4
+
+Black pushes the a-pawn. The last soldier walking toward a promotion square he will never reach.
+
+69. Re1
+
+The Repo Man's rook steps back to e1. A victory lap, or a moment of nerves? Re8 was mate on the spot, so White gives Black one more move. Showmanship, we will call it.
+
+69... a3
+
+One more step for the a-pawn. Two squares from glory, one move from the end.
+
+70. Re8#
+
+Checkmate. The rook arrives on e8, the knight on d6 shuts f7, the king on h6 shuts g7, and the eighth rank belongs to White. Black's king has nowhere to go. That's the bell. White wins, one-nil, after seventy moves and a hundred and thirty-nine plies of chess.
 
 # Scorecards
 
-Scorecards so far. White: an early tempo dropped in the opening, a beautiful two-move combination to win a knight, a slow leak of pawns that let a won game get messy, and then a patient recovery once the knight came home. Grade B. Black: a lost knight to a queen check that should never have been allowed, relentless rook play that clawed the material all the way back, and then a passed pawn pushed into a crowd. Grade B minus, for heart. Piece of the night: Black-Rook-Rocky. Comeback of the night: White-Knight-The-Wanderer, from a7 to the winning c3 square. We will see you for the final bell.
+Final scorecards. White: an early tempo dropped in the opening, a beautiful two-move combination to win a knight, a slow leak of pawns that let a won game get messy, a patient recovery once the knight came home, and then a textbook mating net with rook, knight and king. Grade A minus. Black: a lost knight to a queen check that should never have been allowed, relentless rook play that clawed the material all the way back, a passed pawn pushed into a crowd, and a last pawn grab on a4 that left the rook offside while the mating net closed. Grade B minus, for heart. Piece of the night: Black-Rook-Rocky, who lost but never stopped punching. Move of the night: 67. Re3, the quiet mate threat. Comeback of the night: White-Knight-The-Wanderer, from a7 to a3 to d6, where he shut the door. The Repo Man collects. Good night from the Ruy Lopez Arena.
